@@ -80,7 +80,28 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.NotFound(err, w, r)
 			return
 		}
-		WriteJSON(v, w)
+		if reflect.ValueOf(v).Kind() != reflect.Chan {
+			WriteJSON(v, w)
+			return
+		}
+		c, ok := v.(chan interface{})
+		if !ok {
+			panic(errors.New(
+				"type must be chan interface{}"))
+		}
+		w.Write([]byte{'['})
+		i := 0
+		for vv := range c {
+			if err, ok := vv.(error); ok {
+				panic(err)
+			}
+			if i != 0 {
+				w.Write([]byte{','})
+			}
+			WriteJSON(vv, w)
+			i++
+		}
+		w.Write([]byte{']'})
 	case r.Method == "PUT" && id != "":
 		v := reflect.New(h.DataType).Interface()
 		err := ReadJSON(v, r)

@@ -58,14 +58,14 @@ func (m *Model) Get(id string) (v interface{}, err error) {
 
 func (m *Model) GetAll() (v interface{}, err error) {
 	log.Println("GetAll")
-	r := make([]IdValue, len(dataStore))
-	i := 0
-	for id, v := range dataStore {
-		r[i].Id = id
-		r[i].Value = v
-		i++
-	}
-	return r, nil
+	c := make(chan interface{})
+	go func() {
+		for n, v := range dataStore {
+			c <- &IdValue{Id: n, Value: v}
+		}
+		close(c)
+	}()
+	return c, nil
 }
 
 func (m *Model) Put(id string, v interface{}) (err error) {
