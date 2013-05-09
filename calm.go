@@ -47,13 +47,13 @@ func (h *RESTHandler) SetPathParameters(nvpairs map[string]string) {
 
 func (h *RESTHandler) NotFound(
 	err error, w http.ResponseWriter, r *http.Request) {
-	log.Println(err)
+	log.Printf("%s: %s: %s\n", r.Method, r.URL, err)
 	http.Error(w, err.Error(), http.StatusNotFound)
 }
 
 func (h *RESTHandler) BadRequest(
 	err error, w http.ResponseWriter, r *http.Request) {
-	log.Println(err)
+	log.Printf("%s: %s: %s\n", r.Method, r.URL, err)
 	http.Error(w, err.Error(), http.StatusBadRequest)
 }
 
@@ -65,6 +65,22 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				http.StatusInternalServerError)
 		}
 	}()
+	accept_json := true
+	accepts := r.Header["Accept"]
+	if len(accepts) > 0 {
+		accept_json = false
+	}
+	for _, accept := range accepts {
+		if AcceptJSON(accept) {
+			accept_json = true
+		}
+	}
+	if !accept_json {
+		log.Printf("%s not supported.\n", accepts)
+		http.Error(w, "Supported Content-Type: application/json",
+			http.StatusNotAcceptable)
+		return
+	}
 	id := h.pathParameters["id"]
 	switch {
 	case r.Method == "GET" && id != "":

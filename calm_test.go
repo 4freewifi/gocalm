@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/johncylee/goroute"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -44,7 +43,6 @@ type Model struct {
 }
 
 func (m *Model) Get(id string) (v interface{}, err error) {
-	log.Println("Get")
 	for n, v := range dataStore {
 		if n == id {
 			return &IdValue{
@@ -57,7 +55,6 @@ func (m *Model) Get(id string) (v interface{}, err error) {
 }
 
 func (m *Model) GetAll() (v interface{}, err error) {
-	log.Println("GetAll")
 	c := make(chan interface{})
 	go func() {
 		for n, v := range dataStore {
@@ -69,7 +66,6 @@ func (m *Model) GetAll() (v interface{}, err error) {
 }
 
 func (m *Model) Put(id string, v interface{}) (err error) {
-	log.Println("Put")
 	f, ok := v.(*IdValue)
 	if !ok {
 		return TypeMismatch
@@ -84,7 +80,6 @@ func (m *Model) Put(id string, v interface{}) (err error) {
 }
 
 func (m *Model) PutAll(v interface{}) (err error) {
-	log.Println("PutAll")
 	a, ok := v.([]IdValue)
 	if !ok {
 		return TypeMismatch
@@ -97,7 +92,6 @@ func (m *Model) PutAll(v interface{}) (err error) {
 }
 
 func (m *Model) Post(v interface{}) (err error) {
-	log.Println("Post")
 	f, ok := v.(*IdValue)
 	if !ok {
 		return TypeMismatch
@@ -110,7 +104,6 @@ func (m *Model) Post(v interface{}) (err error) {
 }
 
 func (m *Model) Delete(id string) (err error) {
-	log.Println("Delete")
 	for n, _ := range dataStore {
 		if n == id {
 			delete(dataStore, n)
@@ -121,38 +114,64 @@ func (m *Model) Delete(id string) (err error) {
 }
 
 func (m *Model) DeleteAll() (err error) {
-	log.Println("DeleteAll")
 	dataStore = map[string]string{}
 	return nil
 }
 
-func Expect(t *testing.T, b io.ReadCloser, expect []byte) {
-	defer b.Close()
-	body, err := ioutil.ReadAll(b)
+func Expect(t *testing.T, r *http.Response, v interface{}) {
+	switch expect := v.(type) {
+	case []byte:
+		b := r.Body
+		defer b.Close()
+		body, err := ioutil.ReadAll(b)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if !reflect.DeepEqual(body, expect) {
+			t.Errorf("Expect: `%s', got: `%s'\n", expect, body)
+			return
+		}
+		log.Printf("Got expected response: `%s'\n", expect)
+		return
+	case int:
+		if r.StatusCode != expect {
+			t.Errorf("Expect %d, got %d\n", expect, r.StatusCode)
+			return
+		}
+		log.Printf("Got expected status: %d\n", expect)
+		return
+	}
+	t.Fatal("Unexpected type")
+}
+
+func VerifyGet(t *testing.T, s *httptest.Server, id string) {
+	client := http.Client{}
+	req, err := http.NewRequest(`GET`, s.URL+`/`+id, nil)
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if !reflect.DeepEqual(body, expect) {
-		t.Errorf("Expect: `%s', got: `%s'\n", expect, body)
-		return
-	}
-	log.Printf("Got expected response: `%s'\n", expect)
-}
-
-func VerifyGet(t *testing.T, s *httptest.Server, id string) {
-	resp, err := http.Get(s.URL + "/" + id)
+	req.Header.Set(`Accept`, `application/json`)
+	res, err := client.Do(req)
 	if err != nil {
 		t.Error(err)
 		return
 	}
 	v := dataStore[id]
 	if v == "" {
-		Expect(t, resp.Body, []byte("Not found\n"))
+		Expect(t, res, http.StatusNotFound)
 		return
 	}
 	j, _ := json.Marshal(IdValue{id, dataStore[id]})
-	Expect(t, resp.Body, j)
+	Expect(t, res, j)
+	req.Header.Set(`Accept`, `text/html`)
+	res, err = client.Do(req)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	Expect(t, res, http.StatusNotAcceptable)
 }
 
 func TestRestful(t *testing.T) {
@@ -167,12 +186,12 @@ func TestRestful(t *testing.T) {
 		VerifyGet(t, s, id)
 	}
 	// GET /
-	resp, err := http.Get(s.URL)
+	res, err := http.Get(s.URL)
 	if err != nil {
 		t.Error(err)
 	} else {
 		tmpIdValues := make([]IdValue, len(dataStore))
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -197,11 +216,11 @@ func TestRestful(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set(`Content-Type`, `application/json`)
-	resp, err = client.Do(req)
+	res, err = client.Do(req)
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, resp.Body, []byte("OK"))
+		Expect(t, res, []byte("OK"))
 	}
 	// GET /Peter to verify
 	VerifyGet(t, s, "Peter")
@@ -212,11 +231,11 @@ func TestRestful(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set(`Content-Type`, `application/json`)
-	resp, err = client.Do(req)
+	res, err = client.Do(req)
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, resp.Body, []byte("OK"))
+		Expect(t, res, []byte("OK"))
 	}
 	// GET /JohnSmith to verify
 	VerifyGet(t, s, "JohnSmith")
@@ -225,11 +244,11 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err = client.Do(req)
+	res, err = client.Do(req)
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, resp.Body, []byte("OK"))
+		Expect(t, res, []byte("OK"))
 	}
 	// GET /Paul to verify
 	VerifyGet(t, s, "Paul")
@@ -238,17 +257,17 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err = client.Do(req)
+	res, err = client.Do(req)
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, resp.Body, []byte("OK"))
+		Expect(t, res, []byte("OK"))
 	}
 	// GET / to verify
-	resp, err = http.Get(s.URL)
+	res, err = http.Get(s.URL)
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, resp.Body, []byte("[]"))
+		Expect(t, res, []byte("[]"))
 	}
 }

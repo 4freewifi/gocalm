@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 )
 
 func ReadJSON(v interface{}, r *http.Request) (err error) {
@@ -42,4 +44,50 @@ func WriteJSON(v interface{}, w http.ResponseWriter) (err error) {
 		panic(err)
 	}
 	return
+}
+
+var mediaRange *regexp.Regexp
+var lws *regexp.Regexp
+
+func AcceptJSON(accept string) bool {
+	accept = lws.ReplaceAllString(accept, "")
+	elements := strings.Split(accept, ",")
+	for _, element := range elements {
+		match := mediaRange.FindStringSubmatch(element)
+		if match == nil {
+			log.Printf("Invalid Content-Type: %s\n", element)
+			return false
+		}
+		atype := match[1]
+		asubtype := match[2]
+		if "*" == atype || "application" == atype {
+			if "*" == asubtype || "json" == asubtype {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func init() {
+	var err error
+
+	// Accept         = "Accept" ":"
+	//                  #( media-range [ accept-params ] )
+	// media-range    = ( "*/*"
+	//                  | ( type "/" "*" )
+	//                  | ( type "/" subtype )
+	//                  ) *( ";" parameter )
+	// accept-params  = ";" "q" "=" qvalue *( accept-extension )
+	// accept-extension = ";" token [ "=" ( token | quoted-string ) ]
+	mediaRange, err = regexp.Compile(`([[:alnum:]\*]+)/([[:alnum:]\*]+).*`)
+	if err != nil {
+		panic(err)
+	}
+
+	// LWS            = [CRLF] 1*( SP | HT )
+	lws, err = regexp.Compile(`[\r\n][ \t]+`)
+	if err != nil {
+		panic(err)
+	}
 }
