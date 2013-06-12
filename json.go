@@ -16,32 +16,26 @@ package gocalm
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"regexp"
 	"strings"
 )
 
-func ReadJSON(v interface{}, r *http.Request) (err error) {
+// ReadJSON reads from http.Request, decode it as a JSON object into
+// v, then return the read []byte and error if any.
+func ReadJSON(v interface{}, r *http.Request) (b []byte, err error) {
 	body := r.Body
 	defer body.Close()
-	dec := json.NewDecoder(body)
-	err = dec.Decode(v)
+	b, err = ioutil.ReadAll(body)
 	if err != nil {
 		log.Println(err)
+		return
 	}
-	return
-}
-
-func WriteJSON(v interface{}, w http.ResponseWriter) (err error) {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	_, err = w.Write(b)
+	err = json.Unmarshal(b, v)
 	if err != nil {
 		log.Println(err)
-		panic(err)
 	}
 	return
 }

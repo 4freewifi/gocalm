@@ -28,8 +28,8 @@ import (
 	"testing"
 )
 
-type IdValue struct {
-	Id    string
+type KeyValue struct {
+	Key   string
 	Value string
 }
 
@@ -42,75 +42,70 @@ var dataStore map[string]string = map[string]string{
 type Model struct {
 }
 
-func (m *Model) Get(id string) (v interface{}, err error) {
-	for n, v := range dataStore {
-		if n == id {
-			return &IdValue{
-				Id:    id,
-				Value: v,
-			}, nil
-		}
+func (m *Model) Get(key string) (interface{}, error) {
+	s := dataStore[key]
+	if s == "" {
+		return nil, nil // Not found
 	}
-	return nil, NotFound
+	return &KeyValue{
+		Key:   key,
+		Value: s,
+	}, nil
 }
 
-func (m *Model) GetAll() (v interface{}, err error) {
+func (m *Model) GetAll() (interface{}, error) {
 	c := make(chan interface{})
 	go func() {
 		for n, v := range dataStore {
-			c <- &IdValue{Id: n, Value: v}
+			c <- &KeyValue{Key: n, Value: v}
 		}
 		close(c)
 	}()
 	return c, nil
 }
 
-func (m *Model) Put(id string, v interface{}) (err error) {
-	f, ok := v.(*IdValue)
+func (m *Model) Put(key string, v interface{}) (err error) {
+	f, ok := v.(*KeyValue)
 	if !ok {
 		return TypeMismatch
 	}
-	for n, _ := range dataStore {
-		if n == id {
-			dataStore[id] = f.Value
-			return nil
-		}
+	if dataStore[key] == "" {
+		return NotFound
 	}
-	return NotFound
+	dataStore[key] = f.Value
+	return nil
 }
 
 func (m *Model) PutAll(v interface{}) (err error) {
-	a, ok := v.([]IdValue)
+	a, ok := v.([]KeyValue)
 	if !ok {
 		return TypeMismatch
 	}
 	dataStore = make(map[string]string)
 	for _, f := range a {
-		dataStore[f.Id] = f.Value
+		dataStore[f.Key] = f.Value
 	}
 	return nil
 }
 
 func (m *Model) Post(v interface{}) (err error) {
-	f, ok := v.(*IdValue)
+	f, ok := v.(*KeyValue)
 	if !ok {
 		return TypeMismatch
 	}
-	if dataStore[f.Id] != "" {
+	if dataStore[f.Key] != "" {
 		return errors.New("Already exists")
 	}
-	dataStore[f.Id] = f.Value
+	dataStore[f.Key] = f.Value
 	return nil
 }
 
-func (m *Model) Delete(id string) (err error) {
-	for n, _ := range dataStore {
-		if n == id {
-			delete(dataStore, n)
-			return nil
-		}
+func (m *Model) Delete(key string) (err error) {
+	if dataStore[key] == "" {
+		return NotFound
 	}
-	return NotFound
+	delete(dataStore, key)
+	return nil
 }
 
 func (m *Model) DeleteAll() (err error) {
@@ -163,7 +158,7 @@ func VerifyGet(t *testing.T, s *httptest.Server, id string) {
 		Expect(t, res, http.StatusNotFound)
 		return
 	}
-	j, _ := json.Marshal(IdValue{id, dataStore[id]})
+	j, _ := json.Marshal(KeyValue{id, dataStore[id]})
 	Expect(t, res, j)
 	req.Header.Set(`Accept`, `text/html`)
 	res, err = client.Do(req)
@@ -176,10 +171,13 @@ func VerifyGet(t *testing.T, s *httptest.Server, id string) {
 
 func TestRestful(t *testing.T) {
 	h := RESTHandler{
-		Model:    &Model{},
-		DataType: reflect.TypeOf(IdValue{}),
+		Name:       "test",
+		Model:      &Model{},
+		DataType:   reflect.TypeOf(KeyValue{}),
+		Expiration: 5, // expires in 5 seconds
 	}
-	s := httptest.NewServer(goroute.Handle("/", `(?P<id>[[:alnum:]]*)`, &h))
+	s := httptest.NewServer(goroute.Handle(
+		"/", `(?P<key>[[:alnum:]]*)`, &h))
 	defer s.Close()
 	// GET each
 	for _, id := range []string{"Peter", "Paul", "Mary"} {
@@ -190,23 +188,24 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	} else {
-		tmpIdValues := make([]IdValue, len(dataStore))
+		tmpKeyValues := make([]KeyValue, len(dataStore))
 		body, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = json.Unmarshal(body, &tmpIdValues)
+		err = json.Unmarshal(body, &tmpKeyValues)
 		if err != nil {
 			t.Fatal(err)
 		}
 		tmpDataStore := make(map[string]string)
-		for _, v := range tmpIdValues {
-			tmpDataStore[v.Id] = v.Value
+		for _, v := range tmpKeyValues {
+			tmpDataStore[v.Key] = v.Value
 		}
-		if !reflect.DeepEqual(tmpDataStore, dataStore) {
-			t.Error(err)
+		if reflect.DeepEqual(tmpDataStore, dataStore) {
+			log.Println("All data retrieved correctly")
+		} else {
+			t.Errorf("%s != %s", tmpDataStore, dataStore)
 		}
-		log.Println("All data retrieved correctly")
 	}
 	// PUT /Peter
 	client := http.Client{}
@@ -225,7 +224,7 @@ func TestRestful(t *testing.T) {
 	// GET /Peter to verify
 	VerifyGet(t, s, "Peter")
 	// POST
-	j, _ := json.Marshal(IdValue{"JohnSmith", "Stranger"})
+	j, _ := json.Marshal(KeyValue{"JohnSmith", "Stranger"})
 	req, err = http.NewRequest(`POST`, s.URL, bytes.NewReader(j))
 	if err != nil {
 		t.Fatal(err)
@@ -252,16 +251,18 @@ func TestRestful(t *testing.T) {
 	}
 	// GET /Paul to verify
 	VerifyGet(t, s, "Paul")
-	// DELETE /
-	req, err = http.NewRequest(`DELETE`, s.URL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res, err = client.Do(req)
-	if err != nil {
-		t.Error(err)
-	} else {
-		Expect(t, res, []byte("OK"))
+	// DELETE /{Peter,Mary,JohnSmith}
+	for _, id := range []string{"Peter", "Mary", "JohnSmith"} {
+		req, err = http.NewRequest(`DELETE`, s.URL+"/"+id, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err = client.Do(req)
+		if err != nil {
+			t.Error(err)
+		} else {
+			Expect(t, res, []byte("OK"))
+		}
 	}
 	// GET / to verify
 	res, err = http.Get(s.URL)
