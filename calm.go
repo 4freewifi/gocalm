@@ -33,7 +33,7 @@ type ModelInterface interface {
 	GetAll() (v interface{}, err error)
 	Put(key string, v interface{}) (err error)
 	PutAll(v interface{}) (err error)
-	Post(v interface{}) (err error)
+	Post(v interface{}) (id string, err error)
 	Delete(key string) (err error)
 	DeleteAll() (err error)
 }
@@ -279,13 +279,13 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			SendBadRequest(err, w, r)
 			return
 		}
-		err = h.Model.Post(v)
+		id, err := h.Model.Post(v)
 		if err != nil {
 			SendBadRequest(err, w, r)
 			return
 		}
 		h.deleteMCAll()
-		fmt.Fprint(w, "OK")
+		fmt.Fprint(w, id)
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(key)
 		if err != nil {

@@ -88,16 +88,16 @@ func (m *Model) PutAll(v interface{}) (err error) {
 	return nil
 }
 
-func (m *Model) Post(v interface{}) (err error) {
+func (m *Model) Post(v interface{}) (string, error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
-		return TypeMismatch
+		return "", TypeMismatch
 	}
 	if dataStore[f.Key] != "" {
-		return errors.New("Already exists")
+		return "", errors.New("Already exists")
 	}
 	dataStore[f.Key] = f.Value
-	return nil
+	return f.Key, nil
 }
 
 func (m *Model) Delete(key string) (err error) {
@@ -234,7 +234,7 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, res, []byte("OK"))
+		Expect(t, res, []byte("JohnSmith"))
 	}
 	// GET /JohnSmith to verify
 	VerifyGet(t, s, "JohnSmith")
