@@ -23,10 +23,14 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"sort"
 )
 
 var NotFound error = errors.New("Not found")
 var TypeMismatch error = errors.New("Type mismatch")
+
+// Default name of the key path parameter
+var Key string = "key"
 
 type ModelInterface interface {
 	Get(key string) (v interface{}, err error)
@@ -59,21 +63,49 @@ type RESTHandler struct {
 	// reflect.TypeOf(<instance in model>)
 	DataType reflect.Type
 	// Used by memcached to determine expiration time in seconds
-	Expiration     int32
-	pathParameters map[string]string
+	Expiration int32
+	// Keeps key-value pairs set by goroute
+	PathParameters map[string]string
+	sortedKeys     []string
 }
 
 // SetPathParameters is required by goroute
 func (h *RESTHandler) SetPathParameters(nvpairs map[string]string) {
-	h.pathParameters = nvpairs
+	keys := make([]string, len(nvpairs))
+	i := 0
+	for k, _ := range nvpairs {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+	h.sortedKeys = keys
+	h.PathParameters = nvpairs
+}
+
+func (h *RESTHandler) getCacheKey(all bool) string {
+	buf := bytes.NewBufferString(h.Name)
+	for i := range h.sortedKeys {
+		err := buf.WriteByte('_')
+		if err != nil {
+			panic(err)
+		}
+		if h.sortedKeys[i] == Key && all {
+			continue
+		}
+		_, err = buf.WriteString(h.PathParameters[h.sortedKeys[i]])
+		if err != nil {
+			panic(err)
+		}
+	}
+	return buf.String()
 }
 
 // getJSON gets value from memcache if it exists or gets it from Model
 func (h *RESTHandler) getJSON(key string) ([]byte, error) {
-	mckey := h.Name + "_" + key
-	item, _ := MC.Get(mckey)
-	if item != nil {
-		log.Printf("memcache Get %s", mckey)
+	cacheKey := h.getCacheKey(false)
+	item, err := MC.Get(cacheKey)
+	if err == nil {
+		log.Printf("memcache Get %s", cacheKey)
 		return item.Value, nil
 	}
 	v, err := h.Model.Get(key)
@@ -88,24 +120,24 @@ func (h *RESTHandler) getJSON(key string) ([]byte, error) {
 		return nil, err
 	}
 	err = MC.Set(&memcache.Item{
-		Key:        mckey,
+		Key:        cacheKey,
 		Value:      b,
 		Expiration: h.Expiration,
 	})
 	if err == nil {
-		log.Printf("memcache Set %s", mckey)
+		log.Printf("memcache Set %s", cacheKey)
 	} else {
-		log.Printf("memcache Set %s: %s", mckey, err.Error())
+		log.Printf("memcache Set %s: %s", cacheKey, err.Error())
 	}
 	return b, nil
 }
 
 // getAllJSON gets value from memcache if it exists or gets it from Model
 func (h *RESTHandler) getAllJSON() ([]byte, error) {
-	mckey := h.Name + "__all"
-	item, _ := MC.Get(mckey)
-	if item != nil {
-		log.Printf("memcache Get %s", mckey)
+	cacheKey := h.getCacheKey(true)
+	item, err := MC.Get(cacheKey)
+	if err == nil {
+		log.Printf("memcache Get %s", cacheKey)
 		return item.Value, nil
 	}
 	v, err := h.Model.GetAll()
@@ -124,14 +156,14 @@ func (h *RESTHandler) getAllJSON() ([]byte, error) {
 		}
 		// ignore error, if any.
 		err = MC.Set(&memcache.Item{
-			Key:        mckey,
+			Key:        cacheKey,
 			Value:      b,
 			Expiration: h.Expiration,
 		})
 		if err == nil {
-			log.Printf("memcache Set %s", mckey)
+			log.Printf("memcache Set %s", cacheKey)
 		} else {
-			log.Printf("memcache Set %s: %s", mckey, err.Error())
+			log.Printf("memcache Set %s: %s", cacheKey, err.Error())
 		}
 		return b, nil
 	}
@@ -172,34 +204,31 @@ func (h *RESTHandler) getAllJSON() ([]byte, error) {
 	}
 	b := buf.Bytes()
 	err = MC.Set(&memcache.Item{
-		Key:        mckey,
+		Key:        cacheKey,
 		Value:      b,
 		Expiration: h.Expiration,
 	})
 	if err == nil {
-		log.Printf("memcache Set %s", mckey)
+		log.Printf("memcache Set %s", cacheKey)
 	} else {
-		log.Printf("memcache Set %s: %s", mckey, err.Error())
+		log.Printf("memcache Set %s: %s", cacheKey, err.Error())
 	}
 	return b, nil
 }
+
 func (h *RESTHandler) deleteMCAll() {
-	mckey := h.Name + "__all"
-	err := MC.Delete(mckey)
+	cacheKey := h.getCacheKey(true)
+	err := MC.Delete(cacheKey)
 	if err == nil {
-		log.Printf("memcache Delete %s", mckey)
-	} else {
-		log.Printf("memcache Delete %s: %s", mckey, err.Error())
+		log.Printf("memcache Delete %s", cacheKey)
 	}
 }
 
-func (h *RESTHandler) deleteMCKey(key string) {
-	mckey := h.Name + "_" + key
-	err := MC.Delete(mckey)
+func (h *RESTHandler) deleteMCKey() {
+	cacheKey := h.getCacheKey(false)
+	err := MC.Delete(cacheKey)
 	if err == nil {
-		log.Printf("memcache Delete %s", mckey)
-	} else {
-		log.Printf("memcache Delete %s: %s", mckey, err.Error())
+		log.Printf("memcache Delete %s", cacheKey)
 	}
 	h.deleteMCAll()
 }
@@ -229,7 +258,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.StatusNotAcceptable)
 		return
 	}
-	key := h.pathParameters["key"]
+	key := h.PathParameters[Key]
 	switch {
 	case r.Method == "GET" && key != "":
 		b, err := h.getJSON(key)
@@ -267,7 +296,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			SendBadRequest(err, w, r)
 			return
 		}
-		h.deleteMCKey(key)
+		h.deleteMCKey()
 		fmt.Fprint(w, "OK")
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
@@ -292,7 +321,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			SendNotFound(w, r)
 			return
 		}
-		h.deleteMCKey(key)
+		h.deleteMCKey()
 		fmt.Fprint(w, "OK")
 	case r.Method == "DELETE" && key == "":
 		panic(errors.New("Not implemented"))
