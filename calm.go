@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// gocalm is a RESTful service framework carefully designed to work
+// with net/http and goroute but it is not tightly coupled to
+// goroute. It is encouraged to store necessary data in self-defined
+// context struct and keep the interface clean. Check the typical
+// usage in calm_test.go .
 package gocalm
 
 import (
@@ -33,12 +38,26 @@ var TypeMismatch error = errors.New("Type mismatch")
 var Key string = "key"
 
 type ModelInterface interface {
+	// Get something that is suitable to json.Marshal. It does not
+	// have to match RESTHandler.DataType.
 	Get(key string) (v interface{}, err error)
+	// GetAll returns something that is suitable to
+	// json.Marshal. It does not have to match
+	// RESTHandler.DataType. It can also be a channel and gocalm
+	// will try to fetch object from it until it closes.
 	GetAll() (v interface{}, err error)
+	// Put `v' to replace object with key value `key'. The
+	// original object must already exist, and `v' must be of type
+	// RESTHandler.DataType.
 	Put(key string, v interface{}) (err error)
+	// PutAll replaces multiple objects.
 	PutAll(v interface{}) (err error)
+	// Post add object of type RESTHandler.DataType. It will
+	// return the id of the newly added object.
 	Post(v interface{}) (id string, err error)
+	// Delete the object with key `key'.
 	Delete(key string) (err error)
+	// Delete every object.
 	DeleteAll() (err error)
 }
 
@@ -55,6 +74,8 @@ func SendBadRequest(
 	http.Error(w, err.Error(), http.StatusBadRequest)
 }
 
+// RESTHandler is http.Handler as well as goroute.Handler. It is
+// designed to use with goroute but it is not tightly coupled.
 type RESTHandler struct {
 	// Name must be unique across all RESTHandlers
 	Name string
@@ -69,17 +90,18 @@ type RESTHandler struct {
 	sortedKeys     []string
 }
 
-// SetPathParameters is required by goroute
-func (h *RESTHandler) SetPathParameters(nvpairs map[string]string) {
-	keys := make([]string, len(nvpairs))
+// SetPathParameters is required by goroute, and gocalm.Key must exist
+// inside path parameters for gocalm to work correctly.
+func (h *RESTHandler) SetPathParameters(kvpairs map[string]string) {
+	keys := make([]string, len(kvpairs))
 	i := 0
-	for k, _ := range nvpairs {
+	for k, _ := range kvpairs {
 		keys[i] = k
 		i++
 	}
 	sort.Strings(keys)
 	h.sortedKeys = keys
-	h.PathParameters = nvpairs
+	h.PathParameters = kvpairs
 }
 
 func (h *RESTHandler) getCacheKey(all bool) string {
@@ -216,6 +238,7 @@ func (h *RESTHandler) getAllJSON() ([]byte, error) {
 	return b, nil
 }
 
+// deleteMCAll deletes the "list all" cache.
 func (h *RESTHandler) deleteMCAll() {
 	cacheKey := h.getCacheKey(true)
 	err := MC.Delete(cacheKey)
@@ -224,6 +247,8 @@ func (h *RESTHandler) deleteMCAll() {
 	}
 }
 
+// deleteMCKey deletes corresponding cache as well as the "list all"
+// cache because it will certainly be outdated if an element changed.
 func (h *RESTHandler) deleteMCKey() {
 	cacheKey := h.getCacheKey(false)
 	err := MC.Delete(cacheKey)

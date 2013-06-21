@@ -43,6 +43,8 @@ func ReadJSON(v interface{}, r *http.Request) (b []byte, err error) {
 var mediaRange *regexp.Regexp
 var lws *regexp.Regexp
 
+// AcceptJSON check the HTTP Accept header to see if application/json
+// is accepted.
 func AcceptJSON(accept string) bool {
 	accept = lws.ReplaceAllString(accept, "")
 	elements := strings.Split(accept, ",")
@@ -54,10 +56,9 @@ func AcceptJSON(accept string) bool {
 		}
 		atype := match[1]
 		asubtype := match[2]
-		if "*" == atype || "application" == atype {
-			if "*" == asubtype || "json" == asubtype {
-				return true
-			}
+		if (atype == "*" || atype == "application") &&
+			(asubtype == "*" || asubtype == "json") {
+			return true
 		}
 	}
 	return false
