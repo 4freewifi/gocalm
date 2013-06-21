@@ -23,9 +23,9 @@ import (
 	"strings"
 )
 
-// ReadJSON reads from http.Request, decode it as a JSON object into
+// readJSON reads from http.Request, decode it as a JSON object into
 // v, then return the read []byte and error if any.
-func ReadJSON(v interface{}, r *http.Request) (b []byte, err error) {
+func readJSON(v interface{}, r *http.Request) (b []byte, err error) {
 	body := r.Body
 	defer body.Close()
 	b, err = ioutil.ReadAll(body)
@@ -43,9 +43,9 @@ func ReadJSON(v interface{}, r *http.Request) (b []byte, err error) {
 var mediaRange *regexp.Regexp
 var lws *regexp.Regexp
 
-// AcceptJSON check the HTTP Accept header to see if application/json
+// acceptJSON check the HTTP Accept header to see if application/json
 // is accepted.
-func AcceptJSON(accept string) bool {
+func acceptJSON(accept string) bool {
 	accept = lws.ReplaceAllString(accept, "")
 	elements := strings.Split(accept, ",")
 	for _, element := range elements {

@@ -31,11 +31,13 @@ import (
 	"sort"
 )
 
+const (
+	// Default name of the key path parameter
+	KEY string = "key"
+)
+
 var NotFound error = errors.New("Not found")
 var TypeMismatch error = errors.New("Type mismatch")
-
-// Default name of the key path parameter
-var Key string = "key"
 
 type ModelInterface interface {
 	// Get something that is suitable to json.Marshal. It does not
@@ -61,14 +63,14 @@ type ModelInterface interface {
 	DeleteAll() (err error)
 }
 
-// SendNotFound sends 404
-func SendNotFound(w http.ResponseWriter, r *http.Request) {
+// sendNotFound sends 404
+func sendNotFound(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s: %s: %s\n", r.Method, r.URL, NotFound)
 	http.Error(w, NotFound.Error(), http.StatusNotFound)
 }
 
-// SendBadRequest sends 400 with given error message
-func SendBadRequest(
+// sendBadRequest sends 400 with given error message
+func sendBadRequest(
 	err error, w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s: %s: %s\n", r.Method, r.URL, err)
 	http.Error(w, err.Error(), http.StatusBadRequest)
@@ -111,7 +113,7 @@ func (h *RESTHandler) getCacheKey(all bool) string {
 		if err != nil {
 			panic(err)
 		}
-		if h.sortedKeys[i] == Key && all {
+		if h.sortedKeys[i] == KEY && all {
 			continue
 		}
 		_, err = buf.WriteString(h.PathParameters[h.sortedKeys[i]])
@@ -272,7 +274,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		accept_json = false
 	}
 	for _, accept := range accepts {
-		if AcceptJSON(accept) {
+		if acceptJSON(accept) {
 			accept_json = true
 			break
 		}
@@ -283,7 +285,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.StatusNotAcceptable)
 		return
 	}
-	key := h.PathParameters[Key]
+	key := h.PathParameters[KEY]
 	switch {
 	case r.Method == "GET" && key != "":
 		b, err := h.getJSON(key)
@@ -291,7 +293,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		if b == nil {
-			SendNotFound(w, r)
+			sendNotFound(w, r)
 		}
 		_, err = w.Write(b)
 		if err != nil {
@@ -303,7 +305,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 		if b == nil {
-			SendNotFound(w, r)
+			sendNotFound(w, r)
 		}
 		_, err = w.Write(b)
 		if err != nil {
@@ -311,14 +313,14 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case r.Method == "PUT" && key != "":
 		v := reflect.New(h.DataType).Interface()
-		_, err := ReadJSON(v, r)
+		_, err := readJSON(v, r)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			sendBadRequest(err, w, r)
 			return
 		}
 		err = h.Model.Put(key, v)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			sendBadRequest(err, w, r)
 			return
 		}
 		h.deleteMCKey()
@@ -328,14 +330,14 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		panic(errors.New("Not implemented"))
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
-		_, err := ReadJSON(v, r)
+		_, err := readJSON(v, r)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			sendBadRequest(err, w, r)
 			return
 		}
 		id, err := h.Model.Post(v)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			sendBadRequest(err, w, r)
 			return
 		}
 		h.deleteMCAll()
@@ -343,7 +345,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(key)
 		if err != nil {
-			SendNotFound(w, r)
+			sendNotFound(w, r)
 			return
 		}
 		h.deleteMCKey()
@@ -352,7 +354,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		panic(errors.New("Not implemented"))
 	default:
 		err := fmt.Errorf("Unsupported request method: %s", r.Method)
-		SendBadRequest(err, w, r)
+		sendBadRequest(err, w, r)
 		return
 	}
 	return
