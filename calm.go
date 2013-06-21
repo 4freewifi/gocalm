@@ -36,8 +36,8 @@ const (
 	KEY string = "key"
 )
 
-var NotFound error = errors.New("Not found")
-var TypeMismatch error = errors.New("Type mismatch")
+var NotFound string = "Not found"
+var TypeMismatch string = "Type mismatch"
 
 type ModelInterface interface {
 	// Get something that is suitable to json.Marshal. It does not
@@ -63,17 +63,31 @@ type ModelInterface interface {
 	DeleteAll() (err error)
 }
 
+type ErrMsg struct {
+	Message string `json:"message"`
+}
+
+// Sends http status code and message in json format
+func sendJSONMsg(w http.ResponseWriter, status int, msg string) {
+	j, err := json.Marshal(ErrMsg{msg})
+	if err != nil {
+		// that's enough reason to panic
+		panic(err)
+	}
+	http.Error(w, string(j), status)
+}
+
 // sendNotFound sends 404
 func sendNotFound(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s: %s: %s\n", r.Method, r.URL, NotFound)
-	http.Error(w, NotFound.Error(), http.StatusNotFound)
+	sendJSONMsg(w, http.StatusNotFound, NotFound)
 }
 
 // sendBadRequest sends 400 with given error message
-func sendBadRequest(
-	err error, w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s: %s: %s\n", r.Method, r.URL, err)
-	http.Error(w, err.Error(), http.StatusBadRequest)
+func sendBadRequest(err interface{}, w http.ResponseWriter, r *http.Request) {
+	msg := fmt.Sprint(err)
+	log.Printf("%s: %s: %s\n", r.Method, r.URL, msg)
+	sendJSONMsg(w, http.StatusBadRequest, msg)
 }
 
 // RESTHandler is http.Handler as well as goroute.Handler. It is
@@ -263,9 +277,9 @@ func (h *RESTHandler) deleteMCKey() {
 func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Panicln(err)
-			http.Error(w, fmt.Sprint(err),
-				http.StatusInternalServerError)
+			msg := fmt.Sprint(err)
+			log.Println(msg)
+			sendJSONMsg(w, http.StatusInternalServerError, msg)
 		}
 	}()
 	accept_json := true
@@ -281,8 +295,8 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !accept_json {
 		log.Printf("`%s' is not supported.\n", accepts)
-		http.Error(w, "Supported Content-Type: application/json",
-			http.StatusNotAcceptable)
+		sendJSONMsg(w, http.StatusNotAcceptable,
+			"Supported Content-Type: application/json")
 		return
 	}
 	key := h.PathParameters[KEY]
@@ -324,10 +338,10 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.deleteMCKey()
-		fmt.Fprint(w, "OK")
+		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
-		panic(errors.New("Not implemented"))
+		sendBadRequest("Not implemented", w, r)
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
@@ -341,7 +355,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.deleteMCAll()
-		fmt.Fprint(w, id)
+		fmt.Fprintf(w, `{id: "%s"}`, id)
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(key)
 		if err != nil {
@@ -349,12 +363,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.deleteMCKey()
-		fmt.Fprint(w, "OK")
+		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "DELETE" && key == "":
-		panic(errors.New("Not implemented"))
+		sendBadRequest("Not implemented", w, r)
 	default:
-		err := fmt.Errorf("Unsupported request method: %s", r.Method)
-		sendBadRequest(err, w, r)
+		msg := fmt.Sprintf("Unsupported request method: %s", r.Method)
+		sendBadRequest(msg, w, r)
 		return
 	}
 	return
