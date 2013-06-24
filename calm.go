@@ -355,7 +355,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.deleteMCAll()
-		fmt.Fprintf(w, `{id: "%s"}`, id)
+		fmt.Fprintf(w, `{"id": "%s"}`, id)
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(key)
 		if err != nil {
