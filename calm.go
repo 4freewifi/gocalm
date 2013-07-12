@@ -99,7 +99,7 @@ type RESTHandler struct {
 	Model ModelInterface
 	// reflect.TypeOf(<instance in model>)
 	DataType reflect.Type
-	// Used by memcached to determine expiration time in seconds
+	// Cache expiration time in seconds. 0 means no cache.
 	Expiration int32
 	// Keeps key-value pairs set by goroute
 	PathParameters map[string]string
@@ -140,11 +140,14 @@ func (h *RESTHandler) getCacheKey(all bool) string {
 
 // getJSON gets value from memcache if it exists or gets it from Model
 func (h *RESTHandler) getJSON(key string) ([]byte, error) {
-	cacheKey := h.getCacheKey(false)
-	item, err := MC.Get(cacheKey)
-	if err == nil {
-		log.Printf("memcache Get %s", cacheKey)
-		return item.Value, nil
+	var cacheKey string
+	if h.Expiration != 0 {
+		cacheKey = h.getCacheKey(false)
+		item, err := MC.Get(cacheKey)
+		if err == nil {
+			log.Printf("memcache Get %s", cacheKey)
+			return item.Value, nil
+		}
 	}
 	v, err := h.Model.Get(key)
 	if err != nil {
@@ -156,6 +159,9 @@ func (h *RESTHandler) getJSON(key string) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return nil, err
+	}
+	if h.Expiration == 0 {
+		return b, nil
 	}
 	err = MC.Set(&memcache.Item{
 		Key:        cacheKey,
@@ -172,11 +178,14 @@ func (h *RESTHandler) getJSON(key string) ([]byte, error) {
 
 // getAllJSON gets value from memcache if it exists or gets it from Model
 func (h *RESTHandler) getAllJSON() ([]byte, error) {
-	cacheKey := h.getCacheKey(true)
-	item, err := MC.Get(cacheKey)
-	if err == nil {
-		log.Printf("memcache Get %s", cacheKey)
-		return item.Value, nil
+	var cacheKey string
+	if h.Expiration != 0 {
+		cacheKey := h.getCacheKey(true)
+		item, err := MC.Get(cacheKey)
+		if err == nil {
+			log.Printf("memcache Get %s", cacheKey)
+			return item.Value, nil
+		}
 	}
 	v, err := h.Model.GetAll()
 	if err != nil {
@@ -191,6 +200,9 @@ func (h *RESTHandler) getAllJSON() ([]byte, error) {
 		b, err := json.Marshal(v)
 		if err != nil {
 			return nil, err
+		}
+		if h.Expiration == 0 {
+			return b, nil
 		}
 		// ignore error, if any.
 		err = MC.Set(&memcache.Item{
@@ -241,6 +253,9 @@ func (h *RESTHandler) getAllJSON() ([]byte, error) {
 		return nil, err
 	}
 	b := buf.Bytes()
+	if h.Expiration == 0 {
+		return b, nil
+	}
 	err = MC.Set(&memcache.Item{
 		Key:        cacheKey,
 		Value:      b,
@@ -337,7 +352,9 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sendBadRequest(err, w, r)
 			return
 		}
-		h.deleteMCKey()
+		if h.Expiration != 0 {
+			h.deleteMCKey()
+		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
@@ -354,7 +371,9 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sendBadRequest(err, w, r)
 			return
 		}
-		h.deleteMCAll()
+		if h.Expiration != 0 {
+			h.deleteMCAll()
+		}
 		fmt.Fprintf(w, `{"id": "%s"}`, id)
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(key)
@@ -362,7 +381,9 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sendNotFound(w, r)
 			return
 		}
-		h.deleteMCKey()
+		if h.Expiration != 0 {
+			h.deleteMCKey()
+		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "DELETE" && key == "":
 		sendBadRequest("Not implemented", w, r)
