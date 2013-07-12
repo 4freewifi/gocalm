@@ -31,36 +31,31 @@ import (
 	"sort"
 )
 
-const (
-	// Default name of the key path parameter
-	KEY string = "key"
-)
-
 var NotFound string = "Not found"
 var TypeMismatch string = "Type mismatch"
 
 type ModelInterface interface {
 	// Get something that is suitable to json.Marshal. It does not
 	// have to match RESTHandler.DataType.
-	Get(key string) (v interface{}, err error)
+	Get(kvpairs map[string]string) (v interface{}, err error)
 	// GetAll returns something that is suitable to
 	// json.Marshal. It does not have to match
-	// RESTHandler.DataType. It can also be a channel and gocalm
-	// will try to fetch object from it until it closes.
-	GetAll() (v interface{}, err error)
-	// Put `v' to replace object with key value `key'. The
+	// RESTHandler.DataType. It can also be a channel and gocalm will
+	// try to fetch object from it until it closes.
+	GetAll(kvpairs map[string]string) (v interface{}, err error)
+	// Put `v' to replace object specified by kvpairs. The
 	// original object must already exist, and `v' must be of type
 	// RESTHandler.DataType.
-	Put(key string, v interface{}) (err error)
+	Put(kvpairs map[string]string, v interface{}) (err error)
 	// PutAll replaces multiple objects.
-	PutAll(v interface{}) (err error)
+	PutAll(kvpairs map[string]string, v interface{}) (err error)
 	// Post add object of type RESTHandler.DataType. It will
 	// return the id of the newly added object.
-	Post(v interface{}) (id string, err error)
-	// Delete the object with key `key'.
-	Delete(key string) (err error)
+	Post(kvpairs map[string]string, v interface{}) (id string, err error)
+	// Delete the object specified by kvpairs.
+	Delete(kvpairs map[string]string) (err error)
 	// Delete every object.
-	DeleteAll() (err error)
+	DeleteAll(kvpairs map[string]string) (err error)
 }
 
 type ErrMsg struct {
@@ -101,55 +96,40 @@ type RESTHandler struct {
 	DataType reflect.Type
 	// Cache expiration time in seconds. 0 means no cache.
 	Expiration int32
-	// Keeps key-value pairs set by goroute
-	PathParameters map[string]string
-	sortedKeys     []string
+	// The name of the primary key in request path
+	Key string
 }
 
-// SetPathParameters is required by goroute, and gocalm.Key must exist
-// inside path parameters for gocalm to work correctly.
-func (h *RESTHandler) SetPathParameters(kvpairs map[string]string) {
-	keys := make([]string, len(kvpairs))
-	i := 0
-	for k, _ := range kvpairs {
-		keys[i] = k
-		i++
-	}
-	sort.Strings(keys)
-	h.sortedKeys = keys
-	h.PathParameters = kvpairs
-}
-
-func (h *RESTHandler) getCacheKey(all bool) string {
+func (h *RESTHandler) getCacheKey(keys []string, kvpairs map[string]string,
+) string {
 	buf := bytes.NewBufferString(h.Name)
-	for i := range h.sortedKeys {
+	for i := range keys {
 		err := buf.WriteByte('_')
 		if err != nil {
 			panic(err)
 		}
-		if h.sortedKeys[i] == KEY && all {
-			continue
-		}
-		_, err = buf.WriteString(h.PathParameters[h.sortedKeys[i]])
+		_, err = buf.WriteString(kvpairs[keys[i]])
 		if err != nil {
 			panic(err)
 		}
 	}
+	log.Printf("keys: %s, kvpairs: %s, cachekey: %s", keys, kvpairs, buf)
 	return buf.String()
 }
 
 // getJSON gets value from memcache if it exists or gets it from Model
-func (h *RESTHandler) getJSON(key string) ([]byte, error) {
+func (h *RESTHandler) getJSON(keys []string, kvpairs map[string]string) (
+	[]byte, error) {
 	var cacheKey string
 	if h.Expiration != 0 {
-		cacheKey = h.getCacheKey(false)
+		cacheKey = h.getCacheKey(keys, kvpairs)
 		item, err := MC.Get(cacheKey)
 		if err == nil {
-			log.Printf("memcache Get %s", cacheKey)
+			log.Printf("memcache Get `%s'", cacheKey)
 			return item.Value, nil
 		}
 	}
-	v, err := h.Model.Get(key)
+	v, err := h.Model.Get(kvpairs)
 	if err != nil {
 		return nil, err
 	}
@@ -169,25 +149,26 @@ func (h *RESTHandler) getJSON(key string) ([]byte, error) {
 		Expiration: h.Expiration,
 	})
 	if err == nil {
-		log.Printf("memcache Set %s", cacheKey)
+		log.Printf("memcache Set `%s'", cacheKey)
 	} else {
-		log.Printf("memcache Set %s: %s", cacheKey, err.Error())
+		log.Printf("memcache Set `%s': %s", cacheKey, err.Error())
 	}
 	return b, nil
 }
 
 // getAllJSON gets value from memcache if it exists or gets it from Model
-func (h *RESTHandler) getAllJSON() ([]byte, error) {
+func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
+	[]byte, error) {
 	var cacheKey string
 	if h.Expiration != 0 {
-		cacheKey := h.getCacheKey(true)
+		cacheKey = h.getCacheKey(keys, kvpairs)
 		item, err := MC.Get(cacheKey)
 		if err == nil {
-			log.Printf("memcache Get %s", cacheKey)
+			log.Printf("memcache Get `%s'", cacheKey)
 			return item.Value, nil
 		}
 	}
-	v, err := h.Model.GetAll()
+	v, err := h.Model.GetAll(kvpairs)
 	if err != nil {
 		return nil, err
 	}
@@ -211,9 +192,10 @@ func (h *RESTHandler) getAllJSON() ([]byte, error) {
 			Expiration: h.Expiration,
 		})
 		if err == nil {
-			log.Printf("memcache Set %s", cacheKey)
+			log.Printf("memcache Set `%s'", cacheKey)
 		} else {
-			log.Printf("memcache Set %s: %s", cacheKey, err.Error())
+			log.Printf("memcache Set `%s': %s", cacheKey,
+				err.Error())
 		}
 		return b, nil
 	}
@@ -262,34 +244,38 @@ func (h *RESTHandler) getAllJSON() ([]byte, error) {
 		Expiration: h.Expiration,
 	})
 	if err == nil {
-		log.Printf("memcache Set %s", cacheKey)
+		log.Printf("memcache Set `%s'", cacheKey)
 	} else {
-		log.Printf("memcache Set %s: %s", cacheKey, err.Error())
+		log.Printf("memcache Set `%s': %s", cacheKey, err.Error())
 	}
 	return b, nil
 }
 
-// deleteMCAll deletes the "list all" cache.
-func (h *RESTHandler) deleteMCAll() {
-	cacheKey := h.getCacheKey(true)
+// deleteMC deletes corresponding cache values.
+func (h *RESTHandler) deleteMC(keys []string, kvpairs map[string]string) {
+	cacheKey := h.getCacheKey(keys, kvpairs)
 	err := MC.Delete(cacheKey)
 	if err == nil {
-		log.Printf("memcache Delete %s", cacheKey)
+		log.Printf("memcache Delete `%s'", cacheKey)
+	}
+	if kvpairs[h.Key] == "" {
+		return
+	}
+	// this means the `list all' cache has to be deleted as well.
+	m := make(map[string]string)
+	for k, v := range kvpairs {
+		m[k] = v
+	}
+	m[h.Key] = ""
+	cacheKey = h.getCacheKey(keys, m)
+	err = MC.Delete(cacheKey)
+	if err == nil {
+		log.Printf("memcache Delete `%s'", cacheKey)
 	}
 }
 
-// deleteMCKey deletes corresponding cache as well as the "list all"
-// cache because it will certainly be outdated if an element changed.
-func (h *RESTHandler) deleteMCKey() {
-	cacheKey := h.getCacheKey(false)
-	err := MC.Delete(cacheKey)
-	if err == nil {
-		log.Printf("memcache Delete %s", cacheKey)
-	}
-	h.deleteMCAll()
-}
-
-func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
+	kvpairs map[string]string) {
 	defer func() {
 		if err := recover(); err != nil {
 			msg := fmt.Sprint(err)
@@ -314,10 +300,17 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"Supported Content-Type: application/json")
 		return
 	}
-	key := h.PathParameters[KEY]
+	keys := make([]string, len(kvpairs))
+	i := 0
+	for k, _ := range kvpairs {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+	key := kvpairs[h.Key]
 	switch {
 	case r.Method == "GET" && key != "":
-		b, err := h.getJSON(key)
+		b, err := h.getJSON(keys, kvpairs)
 		if err != nil {
 			panic(err)
 		}
@@ -329,7 +322,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 	case r.Method == "GET":
-		b, err := h.getAllJSON()
+		b, err := h.getAllJSON(keys, kvpairs)
 		if err != nil {
 			panic(err)
 		}
@@ -347,13 +340,13 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sendBadRequest(err, w, r)
 			return
 		}
-		err = h.Model.Put(key, v)
+		err = h.Model.Put(kvpairs, v)
 		if err != nil {
 			sendBadRequest(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
-			h.deleteMCKey()
+			h.deleteMC(keys, kvpairs)
 		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "PUT":
@@ -366,23 +359,23 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			sendBadRequest(err, w, r)
 			return
 		}
-		id, err := h.Model.Post(v)
+		id, err := h.Model.Post(kvpairs, v)
 		if err != nil {
 			sendBadRequest(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
-			h.deleteMCAll()
+			h.deleteMC(keys, kvpairs)
 		}
 		fmt.Fprintf(w, `{"id": "%s"}`, id)
 	case r.Method == "DELETE" && key != "":
-		err := h.Model.Delete(key)
+		err := h.Model.Delete(kvpairs)
 		if err != nil {
 			sendNotFound(w, r)
 			return
 		}
 		if h.Expiration != 0 {
-			h.deleteMCKey()
+			h.deleteMC(keys, kvpairs)
 		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "DELETE" && key == "":

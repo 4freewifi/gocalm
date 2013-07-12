@@ -28,6 +28,10 @@ import (
 	"testing"
 )
 
+const (
+	KEY = "key"
+)
+
 type KeyValue struct {
 	Key   string
 	Value string
@@ -42,7 +46,8 @@ var dataStore map[string]string = map[string]string{
 type Model struct {
 }
 
-func (m *Model) Get(key string) (interface{}, error) {
+func (m *Model) Get(kvpairs map[string]string) (interface{}, error) {
+	key := kvpairs[KEY]
 	s := dataStore[key]
 	if s == "" {
 		return nil, nil // Not found
@@ -53,7 +58,7 @@ func (m *Model) Get(key string) (interface{}, error) {
 	}, nil
 }
 
-func (m *Model) GetAll() (interface{}, error) {
+func (m *Model) GetAll(kvpairs map[string]string) (interface{}, error) {
 	c := make(chan interface{})
 	go func() {
 		for n, v := range dataStore {
@@ -64,22 +69,23 @@ func (m *Model) GetAll() (interface{}, error) {
 	return c, nil
 }
 
-func (m *Model) Put(key string, v interface{}) (err error) {
+func (m *Model) Put(kvpairs map[string]string, v interface{}) (err error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
-		return TypeMismatch
+		return errors.New(TypeMismatch)
 	}
-	if dataStore[key] == "" {
-		return NotFound
+	f.Key = kvpairs[KEY]
+	if _, ok := dataStore[f.Key]; !ok {
+		return errors.New(NotFound)
 	}
-	dataStore[key] = f.Value
+	dataStore[f.Key] = f.Value
 	return nil
 }
 
-func (m *Model) PutAll(v interface{}) (err error) {
+func (m *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	a, ok := v.([]KeyValue)
 	if !ok {
-		return TypeMismatch
+		return errors.New(TypeMismatch)
 	}
 	dataStore = make(map[string]string)
 	for _, f := range a {
@@ -88,27 +94,28 @@ func (m *Model) PutAll(v interface{}) (err error) {
 	return nil
 }
 
-func (m *Model) Post(v interface{}) (string, error) {
+func (m *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
-		return "", TypeMismatch
+		return "", errors.New(TypeMismatch)
 	}
-	if dataStore[f.Key] != "" {
+	if _, ok := dataStore[f.Key]; ok {
 		return "", errors.New("Already exists")
 	}
 	dataStore[f.Key] = f.Value
 	return f.Key, nil
 }
 
-func (m *Model) Delete(key string) (err error) {
+func (m *Model) Delete(kvpairs map[string]string) (err error) {
+	key := kvpairs[KEY]
 	if dataStore[key] == "" {
-		return NotFound
+		return errors.New(NotFound)
 	}
 	delete(dataStore, key)
 	return nil
 }
 
-func (m *Model) DeleteAll() (err error) {
+func (m *Model) DeleteAll(kvpairs map[string]string) (err error) {
 	dataStore = map[string]string{}
 	return nil
 }
@@ -124,14 +131,15 @@ func Expect(t *testing.T, r *http.Response, v interface{}) {
 			return
 		}
 		if !reflect.DeepEqual(body, expect) {
-			t.Errorf("Expect: `%s', got: `%s'\n", expect, body)
+			t.Fatalf("Expect: `%s', got: `%s'\n", expect, body)
 			return
 		}
 		log.Printf("Got expected response: `%s'\n", expect)
 		return
 	case int:
 		if r.StatusCode != expect {
-			t.Errorf("Expect %d, got %d\n", expect, r.StatusCode)
+			t.Fatalf("Expect status %d, got %d\n",
+				expect, r.StatusCode)
 			return
 		}
 		log.Printf("Got expected status: %d\n", expect)
@@ -175,6 +183,7 @@ func TestRestful(t *testing.T) {
 		Model:      &Model{},
 		DataType:   reflect.TypeOf(KeyValue{}),
 		Expiration: 5, // expires in 5 seconds
+		Key:        KEY,
 	}
 	s := httptest.NewServer(goroute.Handle(
 		"/", `(?P<key>[[:alnum:]]*)`, &h))
@@ -219,7 +228,7 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, res, []byte("OK"))
+		Expect(t, res, 200)
 	}
 	// GET /Peter to verify
 	VerifyGet(t, s, "Peter")
@@ -234,7 +243,7 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, res, []byte("JohnSmith"))
+		Expect(t, res, 200)
 	}
 	// GET /JohnSmith to verify
 	VerifyGet(t, s, "JohnSmith")
@@ -247,7 +256,7 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, res, []byte("OK"))
+		Expect(t, res, 200)
 	}
 	// GET /Paul to verify
 	VerifyGet(t, s, "Paul")
@@ -261,7 +270,7 @@ func TestRestful(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		} else {
-			Expect(t, res, []byte("OK"))
+			Expect(t, res, 200)
 		}
 	}
 	// GET / to verify
@@ -269,6 +278,6 @@ func TestRestful(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	} else {
-		Expect(t, res, []byte("[]"))
+		Expect(t, res, 200)
 	}
 }
