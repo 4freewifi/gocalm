@@ -212,7 +212,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 			"type must be chan interface{}")
 	}
 	buf := bytes.Buffer{}
-	_, err = buf.Write([]byte{'['})
+	err = buf.WriteByte('[')
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 			return nil, err
 		}
 		if i != 0 {
-			_, err = buf.Write([]byte{','})
+			err = buf.WriteByte(',')
 			if err != nil {
 				return nil, err
 			}
@@ -237,7 +237,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 		}
 		i++
 	}
-	_, err = buf.Write([]byte{']'})
+	err = buf.WriteByte(']')
 	if err != nil {
 		return nil, err
 	}
