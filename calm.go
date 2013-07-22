@@ -72,17 +72,24 @@ func sendJSONMsg(w http.ResponseWriter, status int, msg string) {
 	http.Error(w, string(j), status)
 }
 
-// sendNotFound sends 404
-func sendNotFound(w http.ResponseWriter, r *http.Request) {
+// SendNotFound sends 404
+func SendNotFound(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s: %s: %s\n", r.Method, r.URL, NotFound)
 	sendJSONMsg(w, http.StatusNotFound, NotFound)
 }
 
-// sendBadRequest sends 400 with given error message
-func sendBadRequest(err interface{}, w http.ResponseWriter, r *http.Request) {
+// SendBadRequest sends 400 with given error message
+func SendBadRequest(err interface{}, w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprint(err)
 	log.Printf("%s: %s: %s\n", r.Method, r.URL, msg)
 	sendJSONMsg(w, http.StatusBadRequest, msg)
+}
+
+func SendInternalError(err interface{}, w http.ResponseWriter,
+	r *http.Request) {
+	msg := fmt.Sprint(err)
+	log.Printf("%s: %s: %s\n", r.Method, r.URL, msg)
+	sendJSONMsg(w, http.StatusInternalServerError, msg)
 }
 
 // RESTHandler is http.Handler as well as goroute.Handler. It is
@@ -278,9 +285,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	kvpairs map[string]string) {
 	defer func() {
 		if err := recover(); err != nil {
-			msg := fmt.Sprint(err)
-			log.Println(msg)
-			sendJSONMsg(w, http.StatusInternalServerError, msg)
+			SendInternalError(err, w, r)
 		}
 	}()
 	accept_json := true
@@ -315,7 +320,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			panic(err)
 		}
 		if b == nil {
-			sendNotFound(w, r)
+			SendNotFound(w, r)
 		}
 		_, err = w.Write(b)
 		if err != nil {
@@ -327,7 +332,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			panic(err)
 		}
 		if b == nil {
-			sendNotFound(w, r)
+			SendNotFound(w, r)
 		}
 		_, err = w.Write(b)
 		if err != nil {
@@ -337,12 +342,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
-			sendBadRequest(err, w, r)
+			SendBadRequest(err, w, r)
 			return
 		}
 		err = h.Model.Put(kvpairs, v)
 		if err != nil {
-			sendBadRequest(err, w, r)
+			SendBadRequest(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
@@ -351,17 +356,17 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
-		sendBadRequest("Not implemented", w, r)
+		SendBadRequest("Not implemented", w, r)
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
-			sendBadRequest(err, w, r)
+			SendBadRequest(err, w, r)
 			return
 		}
 		id, err := h.Model.Post(kvpairs, v)
 		if err != nil {
-			sendBadRequest(err, w, r)
+			SendBadRequest(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
@@ -371,7 +376,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(kvpairs)
 		if err != nil {
-			sendNotFound(w, r)
+			SendNotFound(w, r)
 			return
 		}
 		if h.Expiration != 0 {
@@ -379,10 +384,10 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "DELETE" && key == "":
-		sendBadRequest("Not implemented", w, r)
+		SendBadRequest("Not implemented", w, r)
 	default:
 		msg := fmt.Sprintf("Unsupported request method: %s", r.Method)
-		sendBadRequest(msg, w, r)
+		SendBadRequest(msg, w, r)
 		return
 	}
 	return
