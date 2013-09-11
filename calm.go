@@ -49,6 +49,10 @@ type ModelInterface interface {
 	Put(kvpairs map[string]string, v interface{}) (err error)
 	// PutAll replaces multiple objects.
 	PutAll(kvpairs map[string]string, v interface{}) (err error)
+	// Patch update object specified by kvpairs. The original object must
+	// already exist, and `v' must be of type map[string]interface{} as
+	// returned by json.Unmarshal([]byte, interface{})
+	Patch(kvpairs map[string]string, v interface{}) (err error)
 	// Post add object of type RESTHandler.DataType. It will
 	// return the id of the newly added object.
 	Post(kvpairs map[string]string, v interface{}) (id string, err error)
@@ -58,13 +62,13 @@ type ModelInterface interface {
 	DeleteAll(kvpairs map[string]string) (err error)
 }
 
-type ErrMsg struct {
+type Msg struct {
 	Message string `json:"message"`
 }
 
 // Sends http status code and message in json format
 func sendJSONMsg(w http.ResponseWriter, status int, msg string) {
-	j, err := json.Marshal(ErrMsg{msg})
+	j, err := json.Marshal(Msg{msg})
 	if err != nil {
 		// that's enough reason to panic
 		panic(err)
@@ -357,6 +361,22 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
 		SendBadRequest("Not implemented", w, r)
+	case r.Method == "PATCH" && key != "":
+		var v interface{}
+		_, err := readJSON(&v, r)
+		if err != nil {
+			SendBadRequest(err, w, r)
+			return
+		}
+		err = h.Model.Patch(kvpairs, v)
+		if err != nil {
+			SendBadRequest(err, w, r)
+			return
+		}
+		if h.Expiration != 0 {
+			h.deleteMC(keys, kvpairs)
+		}
+		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)

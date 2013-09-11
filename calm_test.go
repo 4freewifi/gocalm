@@ -94,6 +94,10 @@ func (m *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	return nil
 }
 
+func (m *Model) Patch(kvpairs map[string]string, v interface{}) (err error) {
+	return m.Put(kvpairs, v)
+}
+
 func (m *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
