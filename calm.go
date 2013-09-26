@@ -309,6 +309,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			"Supported Content-Type: application/json")
 		return
 	}
+	// put the query values in URL into kvpairs
+	values := r.URL.Query()
+	for k, _ := range values {
+		// only get the first value, overwrite existing key
+		kvpairs[k] = values.Get(k)
+	}
 	keys := make([]string, len(kvpairs))
 	i := 0
 	for k, _ := range kvpairs {
