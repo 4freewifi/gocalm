@@ -143,6 +143,8 @@ type RESTHandler struct {
 	Expiration int32
 	// The name of the primary key in request path
 	Key string
+	// memcache client
+	Cache *memcache.Client
 }
 
 func (h *RESTHandler) getCacheKey(keys []string, kvpairs map[string]string,
@@ -168,7 +170,7 @@ func (h *RESTHandler) getJSON(keys []string, kvpairs map[string]string) (
 	var cacheKey string
 	if h.Expiration != 0 {
 		cacheKey = h.getCacheKey(keys, kvpairs)
-		item, err := MC.Get(cacheKey)
+		item, err := h.Cache.Get(cacheKey)
 		if err == nil {
 			log.Printf("memcache Get `%s'", cacheKey)
 			return item.Value, nil
@@ -188,7 +190,7 @@ func (h *RESTHandler) getJSON(keys []string, kvpairs map[string]string) (
 	if h.Expiration == 0 {
 		return b, nil
 	}
-	err = MC.Set(&memcache.Item{
+	err = h.Cache.Set(&memcache.Item{
 		Key:        cacheKey,
 		Value:      b,
 		Expiration: h.Expiration,
@@ -207,7 +209,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 	var cacheKey string
 	if h.Expiration != 0 {
 		cacheKey = h.getCacheKey(keys, kvpairs)
-		item, err := MC.Get(cacheKey)
+		item, err := h.Cache.Get(cacheKey)
 		if err == nil {
 			log.Printf("memcache Get `%s'", cacheKey)
 			return item.Value, nil
@@ -231,7 +233,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 			return b, nil
 		}
 		// ignore error, if any.
-		err = MC.Set(&memcache.Item{
+		err = h.Cache.Set(&memcache.Item{
 			Key:        cacheKey,
 			Value:      b,
 			Expiration: h.Expiration,
@@ -283,7 +285,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 	if h.Expiration == 0 {
 		return b, nil
 	}
-	err = MC.Set(&memcache.Item{
+	err = h.Cache.Set(&memcache.Item{
 		Key:        cacheKey,
 		Value:      b,
 		Expiration: h.Expiration,
@@ -296,10 +298,10 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 	return b, nil
 }
 
-// deleteMC deletes corresponding cache values.
-func (h *RESTHandler) deleteMC(keys []string, kvpairs map[string]string) {
+// deleteCache deletes corresponding cache values.
+func (h *RESTHandler) deleteCache(keys []string, kvpairs map[string]string) {
 	cacheKey := h.getCacheKey(keys, kvpairs)
-	err := MC.Delete(cacheKey)
+	err := h.Cache.Delete(cacheKey)
 	if err == nil {
 		log.Printf("memcache Delete `%s'", cacheKey)
 	}
@@ -313,7 +315,7 @@ func (h *RESTHandler) deleteMC(keys []string, kvpairs map[string]string) {
 	}
 	m[h.Key] = ""
 	cacheKey = h.getCacheKey(keys, m)
-	err = MC.Delete(cacheKey)
+	err = h.Cache.Delete(cacheKey)
 	if err == nil {
 		log.Printf("memcache Delete `%s'", cacheKey)
 	}
@@ -424,7 +426,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			return
 		}
 		if h.Expiration != 0 {
-			h.deleteMC(keys, kvpairs)
+			h.deleteCache(keys, kvpairs)
 		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "PUT":
@@ -443,7 +445,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			return
 		}
 		if h.Expiration != 0 {
-			h.deleteMC(keys, kvpairs)
+			h.deleteCache(keys, kvpairs)
 		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "POST" && key == "":
@@ -459,7 +461,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			return
 		}
 		if h.Expiration != 0 {
-			h.deleteMC(keys, kvpairs)
+			h.deleteCache(keys, kvpairs)
 		}
 		fmt.Fprintf(w, `{"id": "%s"}`, id)
 	case r.Method == "DELETE" && key != "":
@@ -469,7 +471,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			return
 		}
 		if h.Expiration != 0 {
-			h.deleteMC(keys, kvpairs)
+			h.deleteCache(keys, kvpairs)
 		}
 		sendJSONMsg(w, http.StatusOK, "Success")
 	case r.Method == "DELETE" && key == "":

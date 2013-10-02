@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/johncylee/goroute"
 	"io/ioutil"
 	"log"
@@ -196,6 +197,7 @@ func TestRestful(t *testing.T) {
 		DataType:   reflect.TypeOf(KeyValue{}),
 		Expiration: 5, // expires in 5 seconds
 		Key:        KEY,
+		Cache:      memcache.New("127.0.0.1:11211"),
 	}
 	s := httptest.NewServer(goroute.Handle(
 		"/", `(?P<key>[[:alnum:]]*)`, &h))
