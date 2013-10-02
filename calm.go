@@ -12,11 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// gocalm is a RESTful service framework carefully designed to work
-// with net/http and goroute but it is not tightly coupled to
-// goroute. It is encouraged to store necessary data in self-defined
-// context struct and keep the interface clean. Check the typical
-// usage in calm_test.go .
+/*
+
+gocalm is a RESTful service framework carefully designed to work with
+net/http and goroute but it is not tightly coupled to goroute. It is
+encouraged to store necessary data in self-defined context struct and
+keep the interface clean. Check the typical usage in calm_test.go .
+
+Introduce kvpairs
+
+kvpairs is a map[string]string as an argument to communicate with
+Model to specify the data to retrieve/modify. gocalm will also
+automatically parse query values in URL to put into kvpairs. It will
+overwrite existing values, so it's best not to use duplicated
+parameter names.
+
+Special parameters
+
+Key `limit' asks gocalm to return limited number of items, i.e. a
+slice of the original array. If it is effective, another special
+parameter `last' will be used to skip the beginning items whose `id'
+is less or equal to `last'.
+
+*/
 package gocalm
 
 import (
@@ -29,39 +47,55 @@ import (
 	"net/http"
 	"reflect"
 	"sort"
+	"strconv"
+)
+
+const (
+	LAST  = "last"
+	LIMIT = "limit"
 )
 
 var NotFound string = "Not found"
 var TypeMismatch string = "Type mismatch"
 
+// ModelInterface feeds data to RESTHandler
 type ModelInterface interface {
+
 	// Get something that is suitable to json.Marshal. It does not
 	// have to match RESTHandler.DataType.
 	Get(kvpairs map[string]string) (v interface{}, err error)
+
 	// GetAll returns something that is suitable to
 	// json.Marshal. It does not have to match
 	// RESTHandler.DataType. It can also be a channel and gocalm will
 	// try to fetch object from it until it closes.
 	GetAll(kvpairs map[string]string) (v interface{}, err error)
+
 	// Put `v' to replace object specified by kvpairs. The
 	// original object must already exist, and `v' must be of type
 	// RESTHandler.DataType.
 	Put(kvpairs map[string]string, v interface{}) (err error)
+
 	// PutAll replaces multiple objects.
 	PutAll(kvpairs map[string]string, v interface{}) (err error)
+
 	// Patch update object specified by kvpairs. The original object must
 	// already exist, and `v' must be of type map[string]interface{} as
 	// returned by json.Unmarshal([]byte, interface{})
 	Patch(kvpairs map[string]string, v interface{}) (err error)
+
 	// Post add object of type RESTHandler.DataType. It will
 	// return the id of the newly added object.
 	Post(kvpairs map[string]string, v interface{}) (id string, err error)
+
 	// Delete the object specified by kvpairs.
 	Delete(kvpairs map[string]string) (err error)
+
 	// Delete every object.
 	DeleteAll(kvpairs map[string]string) (err error)
 }
 
+// Msg is the standard format to return server message
 type Msg struct {
 	Message string `json:"message"`
 }
@@ -89,6 +123,7 @@ func SendBadRequest(err interface{}, w http.ResponseWriter, r *http.Request) {
 	sendJSONMsg(w, http.StatusBadRequest, msg)
 }
 
+// SendInternalError sends 500 with given error message
 func SendInternalError(err interface{}, w http.ResponseWriter,
 	r *http.Request) {
 	msg := fmt.Sprint(err)
@@ -96,8 +131,7 @@ func SendInternalError(err interface{}, w http.ResponseWriter,
 	sendJSONMsg(w, http.StatusInternalServerError, msg)
 }
 
-// RESTHandler is http.Handler as well as goroute.Handler. It is
-// designed to use with goroute but it is not tightly coupled.
+// RESTHandler is http.Handler as well as goroute.Handler.
 type RESTHandler struct {
 	// Name must be unique across all RESTHandlers
 	Name string
@@ -315,6 +349,17 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		// only get the first value, overwrite existing key
 		kvpairs[k] = values.Get(k)
 	}
+	// if strings `limit' are in keys, make paginated response
+	paginate := false
+	limit := kvpairs["limit"]
+	last := kvpairs["last"]
+	if limit != "" {
+		paginate = true
+		// do not cache paginated result
+		delete(kvpairs, "limit")
+		delete(kvpairs, "last")
+	}
+	// make a sorted index of key names
 	keys := make([]string, len(kvpairs))
 	i := 0
 	for k, _ := range kvpairs {
@@ -331,6 +376,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		}
 		if b == nil {
 			SendNotFound(w, r)
+			return
 		}
 		_, err = w.Write(b)
 		if err != nil {
@@ -343,6 +389,23 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		}
 		if b == nil {
 			SendNotFound(w, r)
+			return
+		}
+		if paginate {
+			l64, err := strconv.ParseInt(limit, 10, 32)
+			l := int(l64)
+			if err != nil || l <= 0 {
+				err = fmt.Errorf(
+					"Invalid query parameter: %s = %s",
+					LIMIT, limit)
+				SendBadRequest(err, w, r)
+				return
+			}
+			b, err = paginateJSON(b, last, l)
+			if err != nil {
+				SendBadRequest(err, w, r)
+				return
+			}
 		}
 		_, err = w.Write(b)
 		if err != nil {

@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -33,21 +34,24 @@ const (
 )
 
 type KeyValue struct {
-	Key   string
-	Value string
+	Key   int64  `json:"id"`
+	Value string `json:"value"`
 }
 
-var dataStore map[string]string = map[string]string{
-	"Peter": "Lemon",
-	"Paul":  "Tree",
-	"Mary":  "Very Pretty",
+var dataStore map[int64]string = map[int64]string{
+	0: "Peter",
+	1: "Paul",
+	2: "Mary",
 }
 
 type Model struct {
 }
 
 func (m *Model) Get(kvpairs map[string]string) (interface{}, error) {
-	key := kvpairs[KEY]
+	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
+	if err != nil {
+		return nil, err
+	}
 	s := dataStore[key]
 	if s == "" {
 		return nil, nil // Not found
@@ -74,7 +78,10 @@ func (m *Model) Put(kvpairs map[string]string, v interface{}) (err error) {
 	if !ok {
 		return errors.New(TypeMismatch)
 	}
-	f.Key = kvpairs[KEY]
+	f.Key, err = strconv.ParseInt(kvpairs[KEY], 10, 64)
+	if err != nil {
+		return
+	}
 	if _, ok := dataStore[f.Key]; !ok {
 		return errors.New(NotFound)
 	}
@@ -87,7 +94,7 @@ func (m *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	if !ok {
 		return errors.New(TypeMismatch)
 	}
-	dataStore = make(map[string]string)
+	dataStore = make(map[int64]string)
 	for _, f := range a {
 		dataStore[f.Key] = f.Value
 	}
@@ -107,11 +114,14 @@ func (m *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
 		return "", errors.New("Already exists")
 	}
 	dataStore[f.Key] = f.Value
-	return f.Key, nil
+	return strconv.FormatInt(f.Key, 10), nil
 }
 
 func (m *Model) Delete(kvpairs map[string]string) (err error) {
-	key := kvpairs[KEY]
+	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
+	if err != nil {
+		return
+	}
 	if dataStore[key] == "" {
 		return errors.New(NotFound)
 	}
@@ -120,7 +130,7 @@ func (m *Model) Delete(kvpairs map[string]string) (err error) {
 }
 
 func (m *Model) DeleteAll(kvpairs map[string]string) (err error) {
-	dataStore = map[string]string{}
+	dataStore = map[int64]string{}
 	return nil
 }
 
@@ -131,12 +141,10 @@ func Expect(t *testing.T, r *http.Response, v interface{}) {
 		defer b.Close()
 		body, err := ioutil.ReadAll(b)
 		if err != nil {
-			t.Error(err)
-			return
+			t.Fatal(err)
 		}
 		if !reflect.DeepEqual(body, expect) {
 			t.Fatalf("Expect: `%s', got: `%s'\n", expect, body)
-			return
 		}
 		log.Printf("Got expected response: `%s'\n", expect)
 		return
@@ -144,7 +152,6 @@ func Expect(t *testing.T, r *http.Response, v interface{}) {
 		if r.StatusCode != expect {
 			t.Fatalf("Expect status %d, got %d\n",
 				expect, r.StatusCode)
-			return
 		}
 		log.Printf("Got expected status: %d\n", expect)
 		return
@@ -152,18 +159,20 @@ func Expect(t *testing.T, r *http.Response, v interface{}) {
 	t.Fatal("Unexpected type")
 }
 
-func VerifyGet(t *testing.T, s *httptest.Server, id string) {
-	client := http.Client{}
-	req, err := http.NewRequest(`GET`, s.URL+`/`+id, nil)
+func VerifyGet(t *testing.T, s *httptest.Server, key string) {
+	id, err := strconv.ParseInt(key, 10, 64)
 	if err != nil {
-		t.Error(err)
-		return
+		t.Fatal(err)
+	}
+	client := http.Client{}
+	req, err := http.NewRequest(`GET`, s.URL+`/`+key, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 	req.Header.Set(`Accept`, `application/json`)
 	res, err := client.Do(req)
 	if err != nil {
-		t.Error(err)
-		return
+		t.Fatal(err)
 	}
 	v := dataStore[id]
 	if v == "" {
@@ -175,8 +184,7 @@ func VerifyGet(t *testing.T, s *httptest.Server, id string) {
 	req.Header.Set(`Accept`, `text/html`)
 	res, err = client.Do(req)
 	if err != nil {
-		t.Error(err)
-		return
+		t.Fatal(err)
 	}
 	Expect(t, res, http.StatusNotAcceptable)
 }
@@ -193,51 +201,50 @@ func TestRestful(t *testing.T) {
 		"/", `(?P<key>[[:alnum:]]*)`, &h))
 	defer s.Close()
 	// GET each
-	for _, id := range []string{"Peter", "Paul", "Mary"} {
+	for _, id := range []string{"0", "1", "2"} {
 		VerifyGet(t, s, id)
 	}
 	// GET /
 	res, err := http.Get(s.URL)
 	if err != nil {
-		t.Error(err)
-	} else {
-		tmpKeyValues := make([]KeyValue, len(dataStore))
-		body, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = json.Unmarshal(body, &tmpKeyValues)
-		if err != nil {
-			t.Fatal(err)
-		}
-		tmpDataStore := make(map[string]string)
-		for _, v := range tmpKeyValues {
-			tmpDataStore[v.Key] = v.Value
-		}
-		if reflect.DeepEqual(tmpDataStore, dataStore) {
-			log.Println("All data retrieved correctly")
-		} else {
-			t.Errorf("%s != %s", tmpDataStore, dataStore)
-		}
+		t.Fatal(err)
 	}
-	// PUT /Peter
+	tmpKeyValues := make([]KeyValue, len(dataStore))
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.Unmarshal(body, &tmpKeyValues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpDataStore := make(map[int64]string)
+	for _, v := range tmpKeyValues {
+		tmpDataStore[v.Key] = v.Value
+	}
+	if reflect.DeepEqual(tmpDataStore, dataStore) {
+		log.Println("All data retrieved correctly")
+	} else {
+		t.Fatalf("%s != %s", tmpDataStore, dataStore)
+	}
+	// PUT /0
 	client := http.Client{}
-	req, err := http.NewRequest(`PUT`, s.URL+"/Peter",
-		strings.NewReader(`{"Value":"Orange!"}`))
+	req, err := http.NewRequest(`PUT`, s.URL+"/0",
+		strings.NewReader(`{"Value":"John"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set(`Content-Type`, `application/json`)
 	res, err = client.Do(req)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	} else {
 		Expect(t, res, 200)
 	}
-	// GET /Peter to verify
-	VerifyGet(t, s, "Peter")
+	// GET /0 to verify
+	VerifyGet(t, s, "0")
 	// POST
-	j, _ := json.Marshal(KeyValue{"JohnSmith", "Stranger"})
+	j, _ := json.Marshal(KeyValue{3, "Mysterious Stranger"})
 	req, err = http.NewRequest(`POST`, s.URL, bytes.NewReader(j))
 	if err != nil {
 		t.Fatal(err)
@@ -245,34 +252,74 @@ func TestRestful(t *testing.T) {
 	req.Header.Set(`Content-Type`, `application/json`)
 	res, err = client.Do(req)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	} else {
 		Expect(t, res, 200)
 	}
-	// GET /JohnSmith to verify
-	VerifyGet(t, s, "JohnSmith")
-	// DELETE /Paul
-	req, err = http.NewRequest(`DELETE`, s.URL+"/Paul", nil)
+	// GET /3 to verify
+	VerifyGet(t, s, "3")
+	// DELETE /1
+	req, err = http.NewRequest(`DELETE`, s.URL+"/1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	res, err = client.Do(req)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	} else {
 		Expect(t, res, 200)
 	}
-	// GET /Paul to verify
-	VerifyGet(t, s, "Paul")
-	// DELETE /{Peter,Mary,JohnSmith}
-	for _, id := range []string{"Peter", "Mary", "JohnSmith"} {
+	// GET /1 to verify
+	VerifyGet(t, s, "1")
+	// expect paginated response
+	res, err = http.Get(s.URL + "/?limit=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err = ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v interface{}
+	err = json.Unmarshal(body, &v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	array, ok := v.([]interface{})
+	if !ok {
+		t.Fatal("type assertion failed: " + string(body))
+	}
+	if len(array) != 2 {
+		t.Fatal("limit 2 but items count is not")
+	}
+	res, err = http.Get(s.URL + "/?last=2&limit=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err = ioutil.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = json.Unmarshal(body, &v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	array, ok = v.([]interface{})
+	if !ok {
+		t.Fatal("type assertion failed: " + string(body))
+	}
+	if len(array) != 1 {
+		t.Fatal("there should only be 1 item left: " + string(body))
+	}
+	// DELETE /{0, 2, 3}
+	for _, id := range []string{"0", "2", "3"} {
 		req, err = http.NewRequest(`DELETE`, s.URL+"/"+id, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		res, err = client.Do(req)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		} else {
 			Expect(t, res, 200)
 		}
@@ -280,7 +327,7 @@ func TestRestful(t *testing.T) {
 	// GET / to verify
 	res, err = http.Get(s.URL)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	} else {
 		Expect(t, res, 200)
 	}
