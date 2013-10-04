@@ -160,7 +160,6 @@ func (h *RESTHandler) getCacheKey(keys []string, kvpairs map[string]string,
 			panic(err)
 		}
 	}
-	log.Printf("keys: %s, kvpairs: %s, cachekey: %s", keys, kvpairs, buf)
 	return buf.String()
 }
 
