@@ -27,13 +27,6 @@ automatically parse query values in URL to put into kvpairs. It will
 overwrite existing values, so it's best not to use duplicated
 parameter names.
 
-Special parameters
-
-Key `limit' asks gocalm to return limited number of items, i.e. a
-slice of the original array. If it is effective, another special
-parameter `last' will be used to skip the beginning items whose `id'
-is less or equal to `last'.
-
 */
 package gocalm
 
@@ -47,12 +40,6 @@ import (
 	"net/http"
 	"reflect"
 	"sort"
-	"strconv"
-)
-
-const (
-	LAST  = "last"
-	LIMIT = "limit"
 )
 
 var NotFound string = "Not found"
@@ -350,16 +337,6 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		// only get the first value, overwrite existing key
 		kvpairs[k] = values.Get(k)
 	}
-	// if strings `limit' are in keys, make paginated response
-	paginate := false
-	limit := kvpairs["limit"]
-	last := kvpairs["last"]
-	if limit != "" {
-		paginate = true
-		// do not cache paginated result
-		delete(kvpairs, "limit")
-		delete(kvpairs, "last")
-	}
 	// make a sorted index of key names
 	keys := make([]string, len(kvpairs))
 	i := 0
@@ -391,22 +368,6 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if b == nil {
 			SendNotFound(w, r)
 			return
-		}
-		if paginate {
-			l64, err := strconv.ParseInt(limit, 10, 32)
-			l := int(l64)
-			if err != nil || l <= 0 {
-				err = fmt.Errorf(
-					"Invalid query parameter: %s = %s",
-					LIMIT, limit)
-				SendBadRequest(err, w, r)
-				return
-			}
-			b, err = paginateJSON(b, last, l)
-			if err != nil {
-				SendBadRequest(err, w, r)
-				return
-			}
 		}
 		_, err = w.Write(b)
 		if err != nil {
