@@ -237,6 +237,11 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 		return nil, errors.New(
 			"type must be chan interface{}")
 	}
+	// drain channel before return
+	defer func() {
+		for _ = range c {
+		}
+	}()
 	buf := bytes.Buffer{}
 	err = buf.WriteByte('[')
 	if err != nil {
