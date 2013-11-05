@@ -374,7 +374,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "GET":
 		b, err := h.getAllJSON(keys, kvpairs)
 		if err != nil {
-			panic(err)
+			if err == ErrNotFound {
+				SendNotFound(w, r)
+				return
+			} else {
+				panic(err)
+			}
 		}
 		if b == nil {
 			SendNotFound(w, r)
