@@ -44,6 +44,7 @@ import (
 
 var NotFound string = "Not found"
 var TypeMismatch string = "Type mismatch"
+var ErrNotFound error = errors.New(NotFound)
 
 // ModelInterface feeds data to RESTHandler
 type ModelInterface interface {
@@ -355,7 +356,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "GET" && key != "":
 		b, err := h.getJSON(keys, kvpairs)
 		if err != nil {
-			panic(err)
+			if err == ErrNotFound {
+				SendNotFound(w, r)
+				return
+			} else {
+				panic(err)
+			}
 		}
 		if b == nil {
 			SendNotFound(w, r)
