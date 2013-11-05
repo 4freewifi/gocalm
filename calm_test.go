@@ -102,8 +102,12 @@ func (m *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	return nil
 }
 
-func (m *Model) Patch(kvpairs map[string]string, v interface{}) (err error) {
-	return m.Put(kvpairs, v)
+func (m *Model) Patch(kvpairs map[string]string, v map[string]interface{}) (
+	err error) {
+	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
+	value := v[`value`].(string)
+	dataStore[key] = value
+	return nil
 }
 
 func (m *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
@@ -232,7 +236,7 @@ func TestRestful(t *testing.T) {
 	// PUT /0
 	client := http.Client{}
 	req, err := http.NewRequest(`PUT`, s.URL+"/0",
-		strings.NewReader(`{"Value":"John"}`))
+		strings.NewReader(`{"value":"John"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,8 +250,23 @@ func TestRestful(t *testing.T) {
 	// GET /0 to verify
 	VerifyGet(t, s, "0")
 	// POST
-	j, _ := json.Marshal(KeyValue{3, "Mysterious Stranger"})
+	j, _ := json.Marshal(KeyValue{3, "unknown"})
 	req, err = http.NewRequest(`POST`, s.URL, bytes.NewReader(j))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(`Content-Type`, `application/json`)
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	} else {
+		Expect(t, res, 200)
+	}
+	// GET /3 to verify
+	VerifyGet(t, s, "3")
+	// PATCH
+	req, err = http.NewRequest(`PATCH`, s.URL+`/3`, strings.NewReader(
+		`{"value":"Mysterious Stranger"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,8 +292,8 @@ func TestRestful(t *testing.T) {
 	}
 	// GET /1 to verify
 	VerifyGet(t, s, "1")
-	// expect paginated response
-	res, err = http.Get(s.URL + "/?limit=2")
+	// GET /
+	res, err = http.Get(s.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,27 +310,8 @@ func TestRestful(t *testing.T) {
 	if !ok {
 		t.Fatal("type assertion failed: " + string(body))
 	}
-	if len(array) != 2 {
-		t.Fatal("limit 2 but items count is not")
-	}
-	res, err = http.Get(s.URL + "/?last=2&limit=2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, err = ioutil.ReadAll(res.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = json.Unmarshal(body, &v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	array, ok = v.([]interface{})
-	if !ok {
-		t.Fatal("type assertion failed: " + string(body))
-	}
-	if len(array) != 1 {
-		t.Fatal("there should only be 1 item left: " + string(body))
+	if len(array) != 3 {
+		t.Fatalf("expect 3 but items count is %d", len(array))
 	}
 	// DELETE /{0, 2, 3}
 	for _, id := range []string{"0", "2", "3"} {

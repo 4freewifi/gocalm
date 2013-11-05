@@ -70,7 +70,7 @@ type ModelInterface interface {
 	// Patch update object specified by kvpairs. The original object must
 	// already exist, and `v' must be of type map[string]interface{} as
 	// returned by json.Unmarshal([]byte, interface{})
-	Patch(kvpairs map[string]string, v interface{}) (err error)
+	Patch(kvpairs map[string]string, v map[string]interface{}) (err error)
 
 	// Post add object of type RESTHandler.DataType. It will
 	// return the id of the newly added object.
@@ -410,7 +410,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			SendBadRequest(err, w, r)
 			return
 		}
-		err = h.Model.Patch(kvpairs, v)
+		m, ok := v.(map[string]interface{})
+		if !ok {
+			SendBadRequest(TypeMismatch, w, r)
+			return
+		}
+		err = h.Model.Patch(kvpairs, m)
 		if err != nil {
 			SendBadRequest(err, w, r)
 			return
