@@ -90,12 +90,13 @@ type Msg struct {
 
 // Sends http status code and message in json format
 func sendJSONMsg(w http.ResponseWriter, status int, msg string) {
-	j, err := json.Marshal(Msg{msg})
+	b, err := json.Marshal(Msg{msg})
 	if err != nil {
 		// that's enough reason to panic
 		panic(err)
 	}
-	http.Error(w, string(j), status)
+	w.WriteHeader(status)
+	w.Write(b)
 }
 
 // SendNotFound sends 404
@@ -320,6 +321,10 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			SendInternalError(err, w, r)
 		}
 	}()
+	// set content type in response header
+	header := w.Header()
+	header.Set("Content-Type", "application/json; charset=utf-8")
+	// check if request accept json
 	accept_json := true
 	accepts := r.Header["Accept"]
 	if len(accepts) > 0 {
