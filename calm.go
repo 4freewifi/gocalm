@@ -453,7 +453,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(kvpairs)
 		if err != nil {
-			SendNotFound(w, r)
+			SendBadRequest(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
