@@ -67,10 +67,13 @@ type ModelInterface interface {
 	// PutAll replaces multiple objects.
 	PutAll(kvpairs map[string]string, v interface{}) (err error)
 
-	// Patch update object specified by kvpairs. The original object must
-	// already exist, and `v' must be of type map[string]interface{} as
-	// returned by json.Unmarshal([]byte, interface{})
-	Patch(kvpairs map[string]string, v map[string]interface{}) (err error)
+	// Patch update object specified by kvpairs. The original
+	// object must already exist, and `v' must be of type
+	// RESTHandler.DataType, while the type of m should be
+	// map[string]interface{} as returned by unmarshalling into an
+	// interface{}.
+	Patch(kvpairs map[string]string, v interface{},
+		m map[string]interface{}) (err error)
 
 	// Post add object of type RESTHandler.DataType. It will
 	// return the id of the newly added object.
@@ -414,18 +417,24 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		// TODO: do not implement this until we have reflect.SliceOf
 		SendBadRequest("Not implemented", w, r)
 	case r.Method == "PATCH" && key != "":
-		var v interface{}
-		_, err := readJSON(&v, r)
+		v := reflect.New(h.DataType).Interface()
+		b, err := readJSON(v, r)
 		if err != nil {
 			SendBadRequest(err, w, r)
 			return
 		}
-		m, ok := v.(map[string]interface{})
+		var i interface{}
+		err = json.Unmarshal(b, &i)
+		if err != nil {
+			SendBadRequest(err, w, r)
+			return
+		}
+		m, ok := i.(map[string]interface{})
 		if !ok {
 			SendBadRequest(TypeMismatch, w, r)
 			return
 		}
-		err = h.Model.Patch(kvpairs, m)
+		err = h.Model.Patch(kvpairs, v, m)
 		if err != nil {
 			SendBadRequest(err, w, r)
 			return

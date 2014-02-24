@@ -48,7 +48,7 @@ var dataStore map[int64]string = map[int64]string{
 type Model struct {
 }
 
-func (m *Model) Get(kvpairs map[string]string) (interface{}, error) {
+func (t *Model) Get(kvpairs map[string]string) (interface{}, error) {
 	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
 	if err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func (m *Model) Get(kvpairs map[string]string) (interface{}, error) {
 	}, nil
 }
 
-func (m *Model) GetAll(kvpairs map[string]string) (interface{}, error) {
+func (t *Model) GetAll(kvpairs map[string]string) (interface{}, error) {
 	c := make(chan interface{})
 	go func() {
 		for n, v := range dataStore {
@@ -74,7 +74,7 @@ func (m *Model) GetAll(kvpairs map[string]string) (interface{}, error) {
 	return c, nil
 }
 
-func (m *Model) Put(kvpairs map[string]string, v interface{}) (err error) {
+func (t *Model) Put(kvpairs map[string]string, v interface{}) (err error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
 		return errors.New(TypeMismatch)
@@ -90,7 +90,7 @@ func (m *Model) Put(kvpairs map[string]string, v interface{}) (err error) {
 	return nil
 }
 
-func (m *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
+func (t *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	a, ok := v.([]KeyValue)
 	if !ok {
 		return errors.New(TypeMismatch)
@@ -102,15 +102,15 @@ func (m *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	return nil
 }
 
-func (m *Model) Patch(kvpairs map[string]string, v map[string]interface{}) (
-	err error) {
+func (t *Model) Patch(kvpairs map[string]string, v interface{},
+	m map[string]interface{}) (err error) {
 	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
-	value := v[`value`].(string)
+	value := m[`value`].(string)
 	dataStore[key] = value
 	return nil
 }
 
-func (m *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
+func (t *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
 		return "", errors.New(TypeMismatch)
@@ -122,7 +122,7 @@ func (m *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
 	return strconv.FormatInt(f.Key, 10), nil
 }
 
-func (m *Model) Delete(kvpairs map[string]string) (err error) {
+func (t *Model) Delete(kvpairs map[string]string) (err error) {
 	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
 	if err != nil {
 		return
@@ -134,7 +134,7 @@ func (m *Model) Delete(kvpairs map[string]string) (err error) {
 	return nil
 }
 
-func (m *Model) DeleteAll(kvpairs map[string]string) (err error) {
+func (t *Model) DeleteAll(kvpairs map[string]string) (err error) {
 	dataStore = map[int64]string{}
 	return nil
 }
