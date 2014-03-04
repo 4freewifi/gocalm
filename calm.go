@@ -317,6 +317,15 @@ func (h *RESTHandler) deleteCache(keys []string, kvpairs map[string]string) {
 	}
 }
 
+func errorHandler(err error, w http.ResponseWriter, r *http.Request) {
+	switch err {
+	case ErrNotFound:
+		SendNotFound(w, r)
+	default:
+		SendBadRequest(err, w, r)
+	}
+}
+
 func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	kvpairs map[string]string) {
 	defer func() {
@@ -364,12 +373,8 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "GET" && key != "":
 		b, err := h.getJSON(keys, kvpairs)
 		if err != nil {
-			if err == ErrNotFound {
-				SendNotFound(w, r)
-				return
-			} else {
-				panic(err)
-			}
+			errorHandler(err, w, r)
+			return
 		}
 		if b == nil {
 			SendNotFound(w, r)
@@ -382,12 +387,8 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "GET":
 		b, err := h.getAllJSON(keys, kvpairs)
 		if err != nil {
-			if err == ErrNotFound {
-				SendNotFound(w, r)
-				return
-			} else {
-				panic(err)
-			}
+			errorHandler(err, w, r)
+			return
 		}
 		if b == nil {
 			SendNotFound(w, r)
@@ -401,12 +402,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		err = h.Model.Put(kvpairs, v)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
@@ -420,13 +421,13 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		v := reflect.New(h.DataType).Interface()
 		b, err := readJSON(v, r)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		var i interface{}
 		err = json.Unmarshal(b, &i)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		m, ok := i.(map[string]interface{})
@@ -436,7 +437,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		}
 		err = h.Model.Patch(kvpairs, v, m)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
@@ -447,12 +448,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		id, err := h.Model.Post(kvpairs, v)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
@@ -462,7 +463,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(kvpairs)
 		if err != nil {
-			SendBadRequest(err, w, r)
+			errorHandler(err, w, r)
 			return
 		}
 		if h.Expiration != 0 {
