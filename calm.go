@@ -42,9 +42,12 @@ import (
 	"sort"
 )
 
-var NotFound string = "Not found"
+var Success string = "Success"
 var TypeMismatch string = "Type mismatch"
+var NotFound string = "Not found"
 var ErrNotFound error = errors.New(NotFound)
+var NotImplemented string = "Not implemented"
+var ErrNotImplemented error = errors.New(NotImplemented)
 
 // ModelInterface feeds data to RESTHandler
 type ModelInterface interface {
@@ -92,7 +95,9 @@ type Msg struct {
 }
 
 // Sends http status code and message in json format
-func sendJSONMsg(w http.ResponseWriter, status int, msg string) {
+func sendJSONMsg(w http.ResponseWriter, r *http.Request, status int,
+	msg string) {
+	log.Printf("%s %s: %d %s\n", r.Method, r.URL, status, msg)
 	b, err := json.Marshal(Msg{msg})
 	if err != nil {
 		// that's enough reason to panic
@@ -102,25 +107,22 @@ func sendJSONMsg(w http.ResponseWriter, status int, msg string) {
 	w.Write(b)
 }
 
-// SendNotFound sends 404
-func SendNotFound(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s: %s: %s\n", r.Method, r.URL, NotFound)
-	sendJSONMsg(w, http.StatusNotFound, NotFound)
+// sendNotFound sends 404
+func sendNotFound(w http.ResponseWriter, r *http.Request) {
+	sendJSONMsg(w, r, http.StatusNotFound, NotFound)
 }
 
-// SendBadRequest sends 400 with given error message
-func SendBadRequest(err interface{}, w http.ResponseWriter, r *http.Request) {
+// sendBadRequest sends 400 with given error message
+func sendBadRequest(err interface{}, w http.ResponseWriter, r *http.Request) {
 	msg := fmt.Sprint(err)
-	log.Printf("%s: %s: %s\n", r.Method, r.URL, msg)
-	sendJSONMsg(w, http.StatusBadRequest, msg)
+	sendJSONMsg(w, r, http.StatusBadRequest, msg)
 }
 
-// SendInternalError sends 500 with given error message
-func SendInternalError(err interface{}, w http.ResponseWriter,
+// sendInternalError sends 500 with given error message
+func sendInternalError(err interface{}, w http.ResponseWriter,
 	r *http.Request) {
 	msg := fmt.Sprint(err)
-	log.Printf("%s: %s: %s\n", r.Method, r.URL, msg)
-	sendJSONMsg(w, http.StatusInternalServerError, msg)
+	sendJSONMsg(w, r, http.StatusInternalServerError, msg)
 }
 
 // RESTHandler is http.Handler as well as goroute.Handler.
@@ -320,9 +322,11 @@ func (h *RESTHandler) deleteCache(keys []string, kvpairs map[string]string) {
 func errorHandler(err error, w http.ResponseWriter, r *http.Request) {
 	switch err {
 	case ErrNotFound:
-		SendNotFound(w, r)
+		sendNotFound(w, r)
+	case ErrNotImplemented:
+		sendJSONMsg(w, r, http.StatusNotImplemented, NotImplemented)
 	default:
-		SendBadRequest(err, w, r)
+		sendBadRequest(err, w, r)
 	}
 }
 
@@ -330,7 +334,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	kvpairs map[string]string) {
 	defer func() {
 		if err := recover(); err != nil {
-			SendInternalError(err, w, r)
+			sendInternalError(err, w, r)
 		}
 	}()
 	// set content type in response header
@@ -350,7 +354,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	}
 	if !accept_json {
 		log.Printf("`%s' is not supported.\n", accepts)
-		sendJSONMsg(w, http.StatusNotAcceptable,
+		sendJSONMsg(w, r, http.StatusNotAcceptable,
 			"Supported Content-Type: application/json")
 		return
 	}
@@ -377,7 +381,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			return
 		}
 		if b == nil {
-			SendNotFound(w, r)
+			sendNotFound(w, r)
 			return
 		}
 		_, err = w.Write(b)
@@ -391,7 +395,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			return
 		}
 		if b == nil {
-			SendNotFound(w, r)
+			sendNotFound(w, r)
 			return
 		}
 		_, err = w.Write(b)
@@ -413,10 +417,10 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if h.Expiration != 0 {
 			h.deleteCache(keys, kvpairs)
 		}
-		sendJSONMsg(w, http.StatusOK, "Success")
+		sendJSONMsg(w, r, http.StatusOK, Success)
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
-		SendBadRequest("Not implemented", w, r)
+		errorHandler(ErrNotImplemented, w, r)
 	case r.Method == "PATCH" && key != "":
 		v := reflect.New(h.DataType).Interface()
 		b, err := readJSON(v, r)
@@ -432,7 +436,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		}
 		m, ok := i.(map[string]interface{})
 		if !ok {
-			SendBadRequest(TypeMismatch, w, r)
+			sendBadRequest(TypeMismatch, w, r)
 			return
 		}
 		err = h.Model.Patch(kvpairs, v, m)
@@ -443,7 +447,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if h.Expiration != 0 {
 			h.deleteCache(keys, kvpairs)
 		}
-		sendJSONMsg(w, http.StatusOK, "Success")
+		sendJSONMsg(w, r, http.StatusOK, Success)
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
@@ -469,12 +473,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if h.Expiration != 0 {
 			h.deleteCache(keys, kvpairs)
 		}
-		sendJSONMsg(w, http.StatusOK, "Success")
+		sendJSONMsg(w, r, http.StatusOK, Success)
 	case r.Method == "DELETE" && key == "":
-		SendBadRequest("Not implemented", w, r)
+		errorHandler(ErrNotImplemented, w, r)
 	default:
 		msg := fmt.Sprintf("Unsupported request method: %s", r.Method)
-		SendBadRequest(msg, w, r)
+		sendBadRequest(msg, w, r)
 		return
 	}
 	return
