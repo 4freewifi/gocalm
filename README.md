@@ -7,6 +7,6 @@ keep the interface clean. Check the typical usage in calm_test.go .
 
 ## API
 
-Visit <http://godoc.org/github.com/johncylee/gocalm>
+Visit <http://godoc.org/github.com/4freewifi/gocalm>
 
-[goroute]: <http://godoc.org/github.com/johncylee/goroute>
+[goroute]: <http://godoc.org/github.com/4freewifi/goroute>
