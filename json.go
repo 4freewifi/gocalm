@@ -16,8 +16,8 @@ package gocalm
 
 import (
 	"encoding/json"
+	"github.com/golang/glog"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -30,12 +30,12 @@ func readJSON(v interface{}, r *http.Request) (b []byte, err error) {
 	defer body.Close()
 	b, err = ioutil.ReadAll(body)
 	if err != nil {
-		log.Println(err)
+		glog.Errorln(err)
 		return
 	}
 	err = json.Unmarshal(b, v)
 	if err != nil {
-		log.Println(err)
+		glog.Warningln(err)
 	}
 	return
 }
@@ -51,7 +51,7 @@ func acceptJSON(accept string) bool {
 	for _, element := range elements {
 		match := mediaRange.FindStringSubmatch(element)
 		if match == nil {
-			log.Printf("Invalid Content-Type: %s\n", element)
+			glog.Warningf("Invalid Content-Type: %s\n", element)
 			return false
 		}
 		atype := match[1]
