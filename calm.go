@@ -42,12 +42,15 @@ import (
 	"sort"
 )
 
-var Success string = "Success"
-var TypeMismatch string = "Type mismatch"
-var NotFound string = "Not found"
-var ErrNotFound error = errors.New(NotFound)
-var NotImplemented string = "Not implemented"
-var ErrNotImplemented error = errors.New(NotImplemented)
+const (
+	SUCCESS         = "Success"
+	TYPE_MISMATCH   = "Type mismatch"
+	NOT_FOUND       = "Not found"
+	NOT_IMPLEMENTED = "Not implemented"
+)
+
+var ErrNotFound error = errors.New(NOT_FOUND)
+var ErrNotImplemented error = errors.New(NOT_IMPLEMENTED)
 
 // ModelInterface feeds data to RESTHandler
 type ModelInterface interface {
@@ -109,7 +112,7 @@ func sendJSONMsg(w http.ResponseWriter, r *http.Request, status int,
 
 // sendNotFound sends 404
 func sendNotFound(w http.ResponseWriter, r *http.Request) {
-	sendJSONMsg(w, r, http.StatusNotFound, NotFound)
+	sendJSONMsg(w, r, http.StatusNotFound, NOT_FOUND)
 }
 
 // sendBadRequest sends 400 with given error message
@@ -324,7 +327,7 @@ func errorHandler(err error, w http.ResponseWriter, r *http.Request) {
 	case ErrNotFound:
 		sendNotFound(w, r)
 	case ErrNotImplemented:
-		sendJSONMsg(w, r, http.StatusNotImplemented, NotImplemented)
+		sendJSONMsg(w, r, http.StatusNotImplemented, NOT_IMPLEMENTED)
 	default:
 		sendBadRequest(err, w, r)
 	}
@@ -417,7 +420,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if h.Expiration != 0 {
 			h.deleteCache(keys, kvpairs)
 		}
-		sendJSONMsg(w, r, http.StatusOK, Success)
+		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
 		errorHandler(ErrNotImplemented, w, r)
@@ -436,7 +439,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		}
 		m, ok := i.(map[string]interface{})
 		if !ok {
-			sendBadRequest(TypeMismatch, w, r)
+			sendBadRequest(TYPE_MISMATCH, w, r)
 			return
 		}
 		err = h.Model.Patch(kvpairs, v, m)
@@ -447,7 +450,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if h.Expiration != 0 {
 			h.deleteCache(keys, kvpairs)
 		}
-		sendJSONMsg(w, r, http.StatusOK, Success)
+		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
@@ -473,7 +476,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if h.Expiration != 0 {
 			h.deleteCache(keys, kvpairs)
 		}
-		sendJSONMsg(w, r, http.StatusOK, Success)
+		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "DELETE" && key == "":
 		errorHandler(ErrNotImplemented, w, r)
 	default:
