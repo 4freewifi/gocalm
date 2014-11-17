@@ -100,7 +100,11 @@ type Msg struct {
 // Sends http status code and message in json format
 func sendJSONMsg(w http.ResponseWriter, r *http.Request, status int,
 	msg string) {
-	glog.Warningf("%s %s: %d %s", r.Method, r.URL, status, msg)
+	if status == http.StatusOK {
+		glog.Infof("%s %s: %d %s", r.Method, r.URL, status, msg)
+	} else {
+		glog.Warningf("%s %s: %d %s", r.Method, r.URL, status, msg)
+	}
 	b, err := json.Marshal(Msg{msg})
 	if err != nil {
 		// that's enough reason to panic
@@ -168,7 +172,7 @@ func (h *RESTHandler) getJSON(keys []string, kvpairs map[string]string) (
 		cacheKey = h.getCacheKey(keys, kvpairs)
 		item, err := h.Cache.Get(cacheKey)
 		if err == nil {
-			glog.Infof("memcache Get `%s'", cacheKey)
+			glog.V(1).Infof("memcache Get `%s'", cacheKey)
 			return item.Value, nil
 		}
 	}
@@ -192,9 +196,9 @@ func (h *RESTHandler) getJSON(keys []string, kvpairs map[string]string) (
 		Expiration: h.Expiration,
 	})
 	if err == nil {
-		glog.Infof("memcache Set `%s'", cacheKey)
+		glog.V(1).Infof("memcache Set `%s'", cacheKey)
 	} else {
-		glog.Infof("memcache Set `%s': %s", cacheKey, err.Error())
+		glog.V(1).Infof("memcache Set `%s': %s", cacheKey, err.Error())
 	}
 	return b, nil
 }
@@ -207,7 +211,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 		cacheKey = h.getCacheKey(keys, kvpairs)
 		item, err := h.Cache.Get(cacheKey)
 		if err == nil {
-			glog.Infof("memcache Get `%s'", cacheKey)
+			glog.V(1).Infof("memcache Get `%s'", cacheKey)
 			return item.Value, nil
 		}
 	}
@@ -235,9 +239,9 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 			Expiration: h.Expiration,
 		})
 		if err == nil {
-			glog.Infof("memcache Set `%s'", cacheKey)
+			glog.V(1).Infof("memcache Set `%s'", cacheKey)
 		} else {
-			glog.Infof("memcache Set `%s': %s", cacheKey,
+			glog.V(1).Infof("memcache Set `%s': %s", cacheKey,
 				err.Error())
 		}
 		return b, nil
@@ -292,9 +296,9 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 		Expiration: h.Expiration,
 	})
 	if err == nil {
-		glog.Infof("memcache Set `%s'", cacheKey)
+		glog.V(1).Infof("memcache Set `%s'", cacheKey)
 	} else {
-		glog.Infof("memcache Set `%s': %s", cacheKey, err.Error())
+		glog.V(1).Infof("memcache Set `%s': %s", cacheKey, err.Error())
 	}
 	return b, nil
 }
@@ -304,7 +308,7 @@ func (h *RESTHandler) deleteCache(keys []string, kvpairs map[string]string) {
 	cacheKey := h.getCacheKey(keys, kvpairs)
 	err := h.Cache.Delete(cacheKey)
 	if err == nil {
-		glog.Infof("memcache Delete `%s'", cacheKey)
+		glog.V(1).Infof("memcache Delete `%s'", cacheKey)
 	}
 	if kvpairs[h.Key] == "" {
 		return
@@ -318,7 +322,7 @@ func (h *RESTHandler) deleteCache(keys []string, kvpairs map[string]string) {
 	cacheKey = h.getCacheKey(keys, m)
 	err = h.Cache.Delete(cacheKey)
 	if err == nil {
-		glog.Infof("memcache Delete `%s'", cacheKey)
+		glog.V(1).Infof("memcache Delete `%s'", cacheKey)
 	}
 }
 
