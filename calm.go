@@ -148,6 +148,22 @@ type RESTHandler struct {
 	Cache *memcache.Client
 }
 
+func (h *RESTHandler) String() string {
+	if h.DataType != nil {
+		return fmt.Sprintf(
+			"{Name: %s, Model: %s, DataType: %s}",
+			h.Name,
+			reflect.TypeOf(h.Model).String(),
+			h.DataType.String(),
+		)
+	}
+	return fmt.Sprintf(
+		"{Name: %s, Model: %s, DataType: nil}",
+		h.Name,
+		reflect.TypeOf(h.Model).String(),
+	)
+}
+
 func (h *RESTHandler) getCacheKey(keys []string, kvpairs map[string]string,
 ) string {
 	buf := bytes.NewBufferString(h.Name)
