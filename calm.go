@@ -51,6 +51,7 @@ const (
 
 var ErrNotFound error = errors.New(NOT_FOUND)
 var ErrNotImplemented error = errors.New(NOT_IMPLEMENTED)
+var ErrTypeMismatch error = errors.New(TYPE_MISMATCH)
 
 // ModelInterface feeds data to RESTHandler
 type ModelInterface interface {
