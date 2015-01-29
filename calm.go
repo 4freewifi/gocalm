@@ -32,6 +32,8 @@ package gocalm
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,13 +41,14 @@ import (
 	"github.com/golang/glog"
 	"net/http"
 	"reflect"
-	"sort"
 )
 
 const (
-	SUCCESS       = "Success"
-	NOT_FOUND     = "Not found"
-	TYPE_MISMATCH = "Type mismatch"
+	SUCCESS            = "Success"
+	NOT_FOUND          = "Not found"
+	TYPE_MISMATCH      = "Type mismatch"
+	MEMCACHE_KEY_MAX   = 250
+	MEMCACHE_VALUE_MAX = 1000000
 )
 
 // error with http status code
@@ -190,32 +193,47 @@ func (h *RESTHandler) String() string {
 	)
 }
 
-func (h *RESTHandler) getCacheKey(keys []string, kvpairs map[string]string,
-) string {
-	buf := bytes.NewBufferString(h.Name)
-	for i := range keys {
-		err := buf.WriteByte('_')
-		if err != nil {
-			panic(err)
-		}
-		_, err = buf.WriteString(kvpairs[keys[i]])
-		if err != nil {
-			panic(err)
-		}
+func (h *RESTHandler) makeKey(r *http.Request) string {
+	b := sha256.Sum256([]byte(r.URL.RequestURI()))
+	return hex.EncodeToString(b[:])
+}
+
+func (h *RESTHandler) cacheGet(key string) []byte {
+	item, err := h.Cache.Get(key)
+	if err != nil {
+		glog.V(1).Infof("memcache Get '%s' error: %v", key, err)
+		return nil
 	}
-	return buf.String()
+	glog.V(1).Infof("memcache Get '%s'", key)
+	return item.Value
+}
+
+func (h *RESTHandler) cacheSet(key string, value []byte) {
+	if len(value) > MEMCACHE_VALUE_MAX {
+		glog.Warningf("Cannot cache, value too big: handler %s, key %s",
+			h.String(), key)
+		return
+	}
+	err := h.Cache.Set(&memcache.Item{
+		Key:        key,
+		Value:      value,
+		Expiration: h.Expiration,
+	})
+	if err != nil {
+		glog.V(1).Infof("memcache Set '%s' error: %v", key, err)
+		return
+	}
+	glog.V(1).Infof("memcache Set '%s'", key)
+	return
 }
 
 // getJSON gets value from memcache if it exists or gets it from Model
-func (h *RESTHandler) getJSON(keys []string, kvpairs map[string]string) (
+func (h *RESTHandler) getJSON(key string, kvpairs map[string]string) (
 	[]byte, error) {
-	var cacheKey string
 	if h.Expiration != 0 {
-		cacheKey = h.getCacheKey(keys, kvpairs)
-		item, err := h.Cache.Get(cacheKey)
-		if err == nil {
-			glog.V(1).Infof("memcache Get `%s'", cacheKey)
-			return item.Value, nil
+		value := h.cacheGet(key)
+		if value != nil {
+			return value, nil
 		}
 	}
 	v, err := h.Model.Get(kvpairs)
@@ -232,29 +250,17 @@ func (h *RESTHandler) getJSON(keys []string, kvpairs map[string]string) (
 	if h.Expiration == 0 {
 		return b, nil
 	}
-	err = h.Cache.Set(&memcache.Item{
-		Key:        cacheKey,
-		Value:      b,
-		Expiration: h.Expiration,
-	})
-	if err == nil {
-		glog.V(1).Infof("memcache Set `%s'", cacheKey)
-	} else {
-		glog.V(1).Infof("memcache Set `%s': %s", cacheKey, err.Error())
-	}
+	h.cacheSet(key, b)
 	return b, nil
 }
 
 // getAllJSON gets value from memcache if it exists or gets it from Model
-func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
+func (h *RESTHandler) getAllJSON(key string, kvpairs map[string]string) (
 	[]byte, error) {
-	var cacheKey string
 	if h.Expiration != 0 {
-		cacheKey = h.getCacheKey(keys, kvpairs)
-		item, err := h.Cache.Get(cacheKey)
-		if err == nil {
-			glog.V(1).Infof("memcache Get `%s'", cacheKey)
-			return item.Value, nil
+		value := h.cacheGet(key)
+		if value != nil {
+			return value, nil
 		}
 	}
 	v, err := h.Model.GetAll(kvpairs)
@@ -274,18 +280,7 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 		if h.Expiration == 0 {
 			return b, nil
 		}
-		// ignore error, if any.
-		err = h.Cache.Set(&memcache.Item{
-			Key:        cacheKey,
-			Value:      b,
-			Expiration: h.Expiration,
-		})
-		if err == nil {
-			glog.V(1).Infof("memcache Set `%s'", cacheKey)
-		} else {
-			glog.V(1).Infof("memcache Set `%s': %s", cacheKey,
-				err.Error())
-		}
+		h.cacheSet(key, b)
 		return b, nil
 	}
 	c, ok := v.(chan interface{})
@@ -332,40 +327,8 @@ func (h *RESTHandler) getAllJSON(keys []string, kvpairs map[string]string) (
 	if h.Expiration == 0 {
 		return b, nil
 	}
-	err = h.Cache.Set(&memcache.Item{
-		Key:        cacheKey,
-		Value:      b,
-		Expiration: h.Expiration,
-	})
-	if err == nil {
-		glog.V(1).Infof("memcache Set `%s'", cacheKey)
-	} else {
-		glog.V(1).Infof("memcache Set `%s': %s", cacheKey, err.Error())
-	}
+	h.cacheSet(key, b)
 	return b, nil
-}
-
-// deleteCache deletes corresponding cache values.
-func (h *RESTHandler) deleteCache(keys []string, kvpairs map[string]string) {
-	cacheKey := h.getCacheKey(keys, kvpairs)
-	err := h.Cache.Delete(cacheKey)
-	if err == nil {
-		glog.V(1).Infof("memcache Delete `%s'", cacheKey)
-	}
-	if kvpairs[h.Key] == "" {
-		return
-	}
-	// this means the `list all' cache has to be deleted as well.
-	m := make(map[string]string)
-	for k, v := range kvpairs {
-		m[k] = v
-	}
-	m[h.Key] = ""
-	cacheKey = h.getCacheKey(keys, m)
-	err = h.Cache.Delete(cacheKey)
-	if err == nil {
-		glog.V(1).Infof("memcache Delete `%s'", cacheKey)
-	}
 }
 
 func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
@@ -408,18 +371,11 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		// only get the first value, overwrite existing key
 		kvpairs[k] = values.Get(k)
 	}
-	// make a sorted index of key names
-	keys := make([]string, len(kvpairs))
-	i := 0
-	for k, _ := range kvpairs {
-		keys[i] = k
-		i++
-	}
-	sort.Strings(keys)
 	key := kvpairs[h.Key]
 	switch {
 	case r.Method == "GET" && key != "":
-		b, err := h.getJSON(keys, kvpairs)
+		cachekey := h.makeKey(r)
+		b, err := h.getJSON(cachekey, kvpairs)
 		if err != nil {
 			errorHandler(err, w, r)
 			return
@@ -433,7 +389,8 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			panic(err)
 		}
 	case r.Method == "GET":
-		b, err := h.getAllJSON(keys, kvpairs)
+		cachekey := h.makeKey(r)
+		b, err := h.getAllJSON(cachekey, kvpairs)
 		if err != nil {
 			errorHandler(err, w, r)
 			return
@@ -458,9 +415,6 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			errorHandler(err, w, r)
 			return
 		}
-		if h.Expiration != 0 {
-			h.deleteCache(keys, kvpairs)
-		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
@@ -483,9 +437,6 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			errorHandler(err, w, r)
 			return
 		}
-		if h.Expiration != 0 {
-			h.deleteCache(keys, kvpairs)
-		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
@@ -499,18 +450,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			errorHandler(err, w, r)
 			return
 		}
-		if h.Expiration != 0 {
-			h.deleteCache(keys, kvpairs)
-		}
 		fmt.Fprintf(w, `{"id": "%s"}`, id)
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(kvpairs)
 		if err != nil {
 			errorHandler(err, w, r)
 			return
-		}
-		if h.Expiration != 0 {
-			h.deleteCache(keys, kvpairs)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "DELETE" && key == "":

@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -53,9 +54,9 @@ func (t *Model) Get(kvpairs map[string]string) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := dataStore[key]
-	if s == "" {
-		return nil, nil // Not found
+	s, ok := dataStore[key]
+	if !ok {
+		return nil, ErrNotFound
 	}
 	return &KeyValue{
 		Key:   key,
@@ -65,9 +66,10 @@ func (t *Model) Get(kvpairs map[string]string) (interface{}, error) {
 
 func (t *Model) GetAll(kvpairs map[string]string) (interface{}, error) {
 	c := make(chan interface{})
+	d := KeyValue{}
 	go func() {
-		for n, v := range dataStore {
-			c <- &KeyValue{Key: n, Value: v}
+		for d.Key, d.Value = range dataStore {
+			c <- d
 		}
 		close(c)
 	}()
@@ -77,23 +79,23 @@ func (t *Model) GetAll(kvpairs map[string]string) (interface{}, error) {
 func (t *Model) Put(kvpairs map[string]string, v interface{}) (err error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
-		return errors.New(TypeMismatch)
+		return ErrTypeMismatch
 	}
-	f.Key, err = strconv.ParseInt(kvpairs[KEY], 10, 64)
+	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
 	if err != nil {
 		return
 	}
-	if _, ok := dataStore[f.Key]; !ok {
-		return errors.New(NotFound)
+	if _, ok := dataStore[key]; !ok {
+		return ErrNotFound
 	}
-	dataStore[f.Key] = f.Value
+	dataStore[key] = f.Value
 	return nil
 }
 
 func (t *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	a, ok := v.([]KeyValue)
 	if !ok {
-		return errors.New(TypeMismatch)
+		return ErrTypeMismatch
 	}
 	dataStore = make(map[int64]string)
 	for _, f := range a {
@@ -105,7 +107,10 @@ func (t *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 func (t *Model) Patch(kvpairs map[string]string, v interface{},
 	m map[string]interface{}) (err error) {
 	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
-	value := m[`value`].(string)
+	if err != nil {
+		return
+	}
+	value := m["value"].(string)
 	dataStore[key] = value
 	return nil
 }
@@ -113,7 +118,7 @@ func (t *Model) Patch(kvpairs map[string]string, v interface{},
 func (t *Model) Post(kvpairs map[string]string, v interface{}) (string, error) {
 	f, ok := v.(*KeyValue)
 	if !ok {
-		return "", errors.New(TypeMismatch)
+		return "", ErrTypeMismatch
 	}
 	if _, ok := dataStore[f.Key]; ok {
 		return "", errors.New("Already exists")
@@ -127,8 +132,8 @@ func (t *Model) Delete(kvpairs map[string]string) (err error) {
 	if err != nil {
 		return
 	}
-	if dataStore[key] == "" {
-		return errors.New(NotFound)
+	if _, ok := dataStore[key]; !ok {
+		return ErrNotFound
 	}
 	delete(dataStore, key)
 	return nil
@@ -170,23 +175,23 @@ func VerifyGet(t *testing.T, s *httptest.Server, key string) {
 		t.Fatal(err)
 	}
 	client := http.Client{}
-	req, err := http.NewRequest(`GET`, s.URL+`/`+key, nil)
+	req, err := http.NewRequest("GET", s.URL+"/"+key, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set(`Accept`, `application/json`)
+	req.Header.Set("Accept", "application/json")
 	res, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v := dataStore[id]
-	if v == "" {
+	v, ok := dataStore[id]
+	if !ok {
 		Expect(t, res, http.StatusNotFound)
 		return
 	}
-	j, _ := json.Marshal(KeyValue{id, dataStore[id]})
+	j, _ := json.Marshal(KeyValue{id, v})
 	Expect(t, res, j)
-	req.Header.Set(`Accept`, `text/html`)
+	req.Header.Set("Accept", "text/html")
 	res, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +204,7 @@ func TestRestful(t *testing.T) {
 		Name:       "test",
 		Model:      &Model{},
 		DataType:   reflect.TypeOf(KeyValue{}),
-		Expiration: 5, // expires in 5 seconds
+		Expiration: 1,
 		Key:        KEY,
 		Cache:      memcache.New("127.0.0.1:11211"),
 	}
@@ -235,61 +240,72 @@ func TestRestful(t *testing.T) {
 	}
 	// PUT /0
 	client := http.Client{}
-	req, err := http.NewRequest(`PUT`, s.URL+"/0",
+	req, err := http.NewRequest("PUT", s.URL+"/0",
 		strings.NewReader(`{"value":"John"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set(`Content-Type`, `application/json`)
+	req.Header.Set("Content-Type", "application/json")
 	res, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
-	} else {
-		Expect(t, res, 200)
 	}
+	Expect(t, res, 200)
+	// Expect to get cached value
+	req, err = http.NewRequest("GET", s.URL+"/0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, _ := json.Marshal(KeyValue{0, "Peter"})
+	Expect(t, res, j)
+	// Wait for cache to expire
+	time.Sleep(2 * time.Second)
 	// GET /0 to verify
 	VerifyGet(t, s, "0")
+	// No need to cache now
+	h.Expiration = 0
 	// POST
-	j, _ := json.Marshal(KeyValue{3, "unknown"})
-	req, err = http.NewRequest(`POST`, s.URL, bytes.NewReader(j))
+	j, _ = json.Marshal(KeyValue{3, "unknown"})
+	req, err = http.NewRequest("POST", s.URL, bytes.NewReader(j))
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set(`Content-Type`, `application/json`)
+	req.Header.Set("Content-Type", "application/json")
 	res, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
-	} else {
-		Expect(t, res, 200)
 	}
+	Expect(t, res, 200)
 	// GET /3 to verify
 	VerifyGet(t, s, "3")
 	// PATCH
-	req, err = http.NewRequest(`PATCH`, s.URL+`/3`, strings.NewReader(
+	req, err = http.NewRequest("PATCH", s.URL+"/3", strings.NewReader(
 		`{"value":"Mysterious Stranger"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set(`Content-Type`, `application/json`)
+	req.Header.Set("Content-Type", "application/json")
 	res, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
-	} else {
-		Expect(t, res, 200)
 	}
+	Expect(t, res, 200)
 	// GET /3 to verify
 	VerifyGet(t, s, "3")
 	// DELETE /1
-	req, err = http.NewRequest(`DELETE`, s.URL+"/1", nil)
+	req, err = http.NewRequest("DELETE", s.URL+"/1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	res, err = client.Do(req)
 	if err != nil {
 		t.Fatal(err)
-	} else {
-		Expect(t, res, 200)
 	}
+	Expect(t, res, 200)
 	// GET /1 to verify
 	VerifyGet(t, s, "1")
 	// GET /
@@ -315,22 +331,20 @@ func TestRestful(t *testing.T) {
 	}
 	// DELETE /{0, 2, 3}
 	for _, id := range []string{"0", "2", "3"} {
-		req, err = http.NewRequest(`DELETE`, s.URL+"/"+id, nil)
+		req, err = http.NewRequest("DELETE", s.URL+"/"+id, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		res, err = client.Do(req)
 		if err != nil {
 			t.Fatal(err)
-		} else {
-			Expect(t, res, 200)
 		}
+		Expect(t, res, 200)
 	}
 	// GET / to verify
 	res, err = http.Get(s.URL)
 	if err != nil {
 		t.Fatal(err)
-	} else {
-		Expect(t, res, 200)
 	}
+	Expect(t, res, 200)
 }

@@ -5,6 +5,8 @@ net/http and [goroute][] but it is not tightly coupled to goroute. It is
 encouraged to store necessary data in self-defined context struct and
 keep the interface clean. Check the typical usage in calm_test.go .
 
+Need memcached to run `go test` and if caching is enabled.
+
 ## API
 
 Visit <http://godoc.org/github.com/4freewifi/gocalm>
