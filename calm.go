@@ -32,7 +32,7 @@ package gocalm
 
 import (
 	"bytes"
-	"crypto/sha256"
+	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -194,7 +194,7 @@ func (h *RESTHandler) String() string {
 }
 
 func (h *RESTHandler) makeKey(r *http.Request) string {
-	b := sha256.Sum256([]byte(r.URL.RequestURI()))
+	b := md5.Sum([]byte(r.URL.RequestURI()))
 	return hex.EncodeToString(b[:])
 }
 
