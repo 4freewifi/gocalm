@@ -154,15 +154,6 @@ func sendInternalError(e error, w http.ResponseWriter, r *http.Request) {
 	sendJSONMsg(w, r, http.StatusInternalServerError, e.Error())
 }
 
-func errorHandler(err error, w http.ResponseWriter, r *http.Request) {
-	switch e := err.(type) {
-	case *Error:
-		sendJSONMsg(w, r, e.StatusCode, e.Message)
-	default:
-		sendInternalError(err, w, r)
-	}
-}
-
 // RESTHandler is http.Handler as well as goroute.Handler.
 type RESTHandler struct {
 	// Name must be unique across all RESTHandlers
@@ -336,14 +327,18 @@ func (h *RESTHandler) getAllJSON(key string, kvpairs map[string]string) (
 func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	kvpairs map[string]string) {
 	defer func() {
-		if err := recover(); err != nil {
-			switch e := err.(type) {
-			case error:
-				sendInternalError(e, w, r)
-			default:
-				sendInternalError(
-					fmt.Errorf("Error: %v", err), w, r)
-			}
+		err := recover()
+		if err == nil {
+			return
+		}
+		switch e := err.(type) {
+		case *Error:
+			sendJSONMsg(w, r, e.StatusCode, e.Message)
+		case error:
+			sendInternalError(e, w, r)
+		default:
+			sendInternalError(
+				fmt.Errorf("Error: %v", err), w, r)
 		}
 	}()
 	// set content type in response header
@@ -379,12 +374,10 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		cachekey := h.makeKey(r)
 		b, err := h.getJSON(cachekey, kvpairs)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		if b == nil {
-			errorHandler(ErrNotFound, w, r)
-			return
+			panic(ErrNotFound)
 		}
 		_, err = w.Write(b)
 		if err != nil {
@@ -394,12 +387,10 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		cachekey := h.makeKey(r)
 		b, err := h.getAllJSON(cachekey, kvpairs)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		if b == nil {
-			errorHandler(ErrNotFound, w, r)
-			return
+			panic(ErrNotFound)
 		}
 		_, err = w.Write(b)
 		if err != nil {
@@ -409,62 +400,53 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		err = h.Model.Put(kvpairs, v)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "PUT":
 		// TODO: do not implement this until we have reflect.SliceOf
-		errorHandler(ErrNotImplemented, w, r)
+		panic(ErrNotImplemented)
 	case r.Method == "PATCH" && key != "":
 		v := reflect.New(h.DataType).Interface()
 		b, err := readJSON(v, r)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		var m map[string]interface{}
 		err = json.Unmarshal(b, &m)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		err = h.Model.Patch(kvpairs, v, m)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "POST" && key == "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		id, err := h.Model.Post(kvpairs, v)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		fmt.Fprintf(w, `{"id": "%s"}`, id)
 	case r.Method == "DELETE" && key != "":
 		err := h.Model.Delete(kvpairs)
 		if err != nil {
-			errorHandler(err, w, r)
-			return
+			panic(err)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
 	case r.Method == "DELETE" && key == "":
-		errorHandler(ErrNotImplemented, w, r)
+		panic(ErrNotImplemented)
 	default:
-		errorHandler(ErrNotImplemented, w, r)
-		return
+		panic(ErrNotImplemented)
 	}
 	return
 }
