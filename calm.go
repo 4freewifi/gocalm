@@ -45,7 +45,8 @@ import (
 
 const (
 	SUCCESS            = "Success"
-	NOT_FOUND          = "Not found"
+	NOT_FOUND          = "Not Found"
+	NOT_ALLOWED        = "Method Not Allowed"
 	TYPE_MISMATCH      = "Type mismatch"
 	MEMCACHE_KEY_MAX   = 250
 	MEMCACHE_VALUE_MAX = 1000000
@@ -74,6 +75,7 @@ var ErrNotFound *Error = &Error{
 
 var ErrNotImplemented *Error = &Error{
 	StatusCode: http.StatusMethodNotAllowed,
+	Message:    NOT_ALLOWED,
 }
 
 var ErrTypeMismatch *Error = &Error{
