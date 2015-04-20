@@ -104,14 +104,13 @@ func (t *Model) PutAll(kvpairs map[string]string, v interface{}) (err error) {
 	return nil
 }
 
-func (t *Model) Patch(kvpairs map[string]string, v interface{},
-	m map[string]interface{}) (err error) {
-	key, err := strconv.ParseInt(kvpairs[KEY], 10, 64)
-	if err != nil {
-		return
+func (t *Model) Patch(kvpairs map[string]string, original interface{},
+	patched interface{}) (err error) {
+	doc, ok := patched.(*KeyValue)
+	if !ok {
+		return ErrTypeMismatch
 	}
-	value := m["value"].(string)
-	dataStore[key] = value
+	dataStore[doc.Key] = doc.Value
 	return nil
 }
 
@@ -284,7 +283,13 @@ func TestRestful(t *testing.T) {
 	VerifyGet(t, s, "3")
 	// PATCH
 	req, err = http.NewRequest("PATCH", s.URL+"/3", strings.NewReader(
-		`{"value":"Mysterious Stranger"}`))
+		`[
+  {
+    "op": "replace",
+    "path": "/value",
+    "value": "Mysterious Stranger"
+  }
+]`))
 	if err != nil {
 		t.Fatal(err)
 	}

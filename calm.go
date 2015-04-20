@@ -38,7 +38,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/evanphx/json-patch"
 	"github.com/golang/glog"
+	"io/ioutil"
 	"net/http"
 	"reflect"
 )
@@ -104,13 +106,10 @@ type ModelInterface interface {
 	// PutAll replaces multiple objects.
 	PutAll(kvpairs map[string]string, v interface{}) (err error)
 
-	// Patch update object specified by kvpairs. The original
-	// object must already exist, and `v' must be of type
-	// RESTHandler.DataType, while the type of m should be
-	// map[string]interface{} as returned by unmarshalling into an
-	// interface{}.
-	Patch(kvpairs map[string]string, v interface{},
-		m map[string]interface{}) (err error)
+	// Patch update the original object specified by kvpairs. Both
+	// patched and original must be of type RESTHandler.DataType.
+	Patch(kvpairs map[string]string, original interface{},
+		patched interface{}) (err error)
 
 	// Post add object of type RESTHandler.DataType. It will
 	// return the id of the newly added object.
@@ -222,6 +221,33 @@ func (h *RESTHandler) cacheSet(key string, value []byte) {
 
 // getJSON gets value from memcache if it exists or gets it from Model
 func (h *RESTHandler) getJSON(key string, kvpairs map[string]string) (
+	interface{}, error) {
+	var err error
+	if h.Expiration != 0 {
+		v := reflect.New(h.DataType).Interface()
+		b := h.cacheGet(key)
+		if b != nil {
+			if err = json.Unmarshal(b, v); err != nil {
+				return nil, err
+			}
+			return v, nil
+		}
+	}
+	v, err := h.Model.Get(kvpairs)
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		return nil, ErrNotFound
+	}
+	// we don't try to catch it here, as the only user of this
+	// function is `Patch`, if it's about to be updated, why cache
+	// it.
+	return v, nil
+}
+
+// getJSONBytes gets value from memcache if it exists or gets it from Model
+func (h *RESTHandler) getJSONBytes(key string, kvpairs map[string]string) (
 	[]byte, error) {
 	if h.Expiration != 0 {
 		value := h.cacheGet(key)
@@ -234,7 +260,7 @@ func (h *RESTHandler) getJSON(key string, kvpairs map[string]string) (
 		return nil, err
 	}
 	if v == nil {
-		return nil, nil // found nothing. not an error.
+		return nil, ErrNotFound
 	}
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -261,7 +287,7 @@ func (h *RESTHandler) getAllJSON(key string, kvpairs map[string]string) (
 		return nil, err
 	}
 	if v == nil {
-		return nil, nil // found nothing. not an error.
+		return nil, ErrNotFound
 	}
 	// model may return a `chan interface{}' to send items one by
 	// one, or return a slice with every item in it.
@@ -372,7 +398,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	switch {
 	case r.Method == "GET" && key != "":
 		cachekey := h.makeKey(r)
-		b, err := h.getJSON(cachekey, kvpairs)
+		b, err := h.getJSONBytes(cachekey, kvpairs)
 		if err != nil {
 			panic(err)
 		}
@@ -411,18 +437,33 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		// TODO: do not implement this until we have reflect.SliceOf
 		panic(ErrNotImplemented)
 	case r.Method == "PATCH" && key != "":
-		v := reflect.New(h.DataType).Interface()
-		b, err := readJSON(v, r)
+		defer r.Body.Close()
+		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			panic(err)
 		}
-		var m map[string]interface{}
-		err = json.Unmarshal(b, &m)
+		patch, err := jsonpatch.DecodePatch(b)
 		if err != nil {
 			panic(err)
 		}
-		err = h.Model.Patch(kvpairs, v, m)
+		cachekey := h.makeKey(r)
+		original, err := h.getJSON(cachekey, kvpairs)
 		if err != nil {
+			panic(err)
+		}
+		if b, err = json.Marshal(original); err != nil {
+			panic(err)
+		}
+		glog.V(1).Infof("original: %s", string(b))
+		if b, err = patch.Apply(b); err != nil {
+			panic(err)
+		}
+		glog.V(1).Infof("patched: %s", string(b))
+		patched := reflect.New(h.DataType).Interface()
+		if err = json.Unmarshal(b, patched); err != nil {
+			panic(err)
+		}
+		if err = h.Model.Patch(kvpairs, original, patched); err != nil {
 			panic(err)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
