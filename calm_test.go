@@ -20,8 +20,8 @@ import (
 	"errors"
 	"github.com/4freewifi/goroute"
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/golang/glog"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -155,14 +155,14 @@ func Expect(t *testing.T, r *http.Response, v interface{}) {
 		if !reflect.DeepEqual(body, expect) {
 			t.Fatalf("Expect: `%s', got: `%s'\n", expect, body)
 		}
-		log.Printf("Got expected response: `%s'\n", expect)
+		glog.Infof("Got expected response: `%s'", expect)
 		return
 	case int:
 		if r.StatusCode != expect {
 			t.Fatalf("Expect status %d, got %d\n",
 				expect, r.StatusCode)
 		}
-		log.Printf("Got expected status: %d\n", expect)
+		glog.Infof("Got expected status: %d", expect)
 		return
 	}
 	t.Fatal("Unexpected type")
@@ -233,7 +233,7 @@ func TestRestful(t *testing.T) {
 		tmpDataStore[v.Key] = v.Value
 	}
 	if reflect.DeepEqual(tmpDataStore, dataStore) {
-		log.Println("All data retrieved correctly")
+		glog.Info("All data retrieved correctly")
 	} else {
 		t.Fatalf("%s != %s", tmpDataStore, dataStore)
 	}
