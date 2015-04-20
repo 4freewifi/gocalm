@@ -99,20 +99,22 @@ type ModelInterface interface {
 	GetAll(kvpairs map[string]string) (v interface{}, err error)
 
 	// Put `v' to replace object specified by kvpairs. The
-	// original object must already exist, and `v' must be of type
-	// RESTHandler.DataType.
+	// original object must already exist, and `v' must be a
+	// pointer to an object of type RESTHandler.DataType.
 	Put(kvpairs map[string]string, v interface{}) (err error)
 
 	// PutAll replaces multiple objects.
 	PutAll(kvpairs map[string]string, v interface{}) (err error)
 
 	// Patch update the original object specified by kvpairs. Both
-	// patched and original must be of type RESTHandler.DataType.
+	// patched and original must be pointers to objects of type
+	// RESTHandler.DataType.
 	Patch(kvpairs map[string]string, original interface{},
 		patched interface{}) (err error)
 
-	// Post add object of type RESTHandler.DataType. It will
-	// return the id of the newly added object.
+	// Post add object. v must be a pointer to an object of type
+	// RESTHandler.DataType. It will return the id of the newly
+	// added object.
 	Post(kvpairs map[string]string, v interface{}) (id string, err error)
 
 	// Delete the object specified by kvpairs.
