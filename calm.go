@@ -221,35 +221,8 @@ func (h *RESTHandler) cacheSet(key string, value []byte) {
 	return
 }
 
-// getJSON gets value from memcache if it exists or gets it from Model
-func (h *RESTHandler) getJSON(key string, kvpairs map[string]string) (
-	interface{}, error) {
-	var err error
-	if h.Expiration != 0 {
-		v := reflect.New(h.DataType).Interface()
-		b := h.cacheGet(key)
-		if b != nil {
-			if err = json.Unmarshal(b, v); err != nil {
-				return nil, err
-			}
-			return v, nil
-		}
-	}
-	v, err := h.Model.Get(kvpairs)
-	if err != nil {
-		return nil, err
-	}
-	if v == nil {
-		return nil, ErrNotFound
-	}
-	// we don't try to catch it here, as the only user of this
-	// function is `Patch`, if it's about to be updated, why cache
-	// it.
-	return v, nil
-}
-
-// getJSONBytes gets value from memcache if it exists or gets it from Model
-func (h *RESTHandler) getJSONBytes(key string, kvpairs map[string]string) (
+// cached gets value from memcache if it exists or gets it from Model
+func (h *RESTHandler) cached(key string, kvpairs map[string]string) (
 	[]byte, error) {
 	if h.Expiration != 0 {
 		value := h.cacheGet(key)
@@ -400,7 +373,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	switch {
 	case r.Method == "GET" && key != "":
 		cachekey := h.makeKey(r)
-		b, err := h.getJSONBytes(cachekey, kvpairs)
+		b, err := h.cached(cachekey, kvpairs)
 		if err != nil {
 			panic(err)
 		}
