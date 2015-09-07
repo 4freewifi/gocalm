@@ -446,11 +446,12 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		}
 		patch, err := jsonpatch.DecodePatch(b)
 		if err != nil {
+			glog.Errorf("jsonpatch.DecodePatch: %v", err)
 			panic(err)
 		}
-		cachekey := h.makeKey(r)
-		original, err := h.getJSON(cachekey, kvpairs)
+		original, err := h.Model.Get(kvpairs)
 		if err != nil {
+			glog.Errorf("h.Model.Get %v", err)
 			panic(err)
 		}
 		if b, err = json.Marshal(original); err != nil {
