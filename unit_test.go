@@ -9,35 +9,30 @@ import (
 )
 
 var book1 = []byte(`{
-  "title": "The Adventures of Tom Sawyer",
-  "author": "Mark Twain"
+  "author": "Mark Twain",
+  "id": "1",
+  "title": "The Adventures of Tom Sawyer"
 }`)
 
 var book2 = []byte(`{
-  "title": "The Adventures of Tom Sawyer",
-  "author": "Ghost Writer"
+  "author": "Ghost Writer",
+  "id": "1",
+  "title": "The Adventures of Tom Sawyer"
 }`)
 
 func TestRouter(t *testing.T) {
 
+	model := MockModel(make(map[string]JSONObject))
 	handler := NewHandler()
-
-	books := &BooksModel{
-		Shelf: make(map[string]Book),
-	}
-
-	booksRouter := handler.Path("/books")
-	booksRouter.
-		Get("Get books", books.GetAll).
-		Post("Add book", books.Post)
-	booksRouter.
-		SubPath("/_doc").
-		Get("Get document", booksRouter.SelfIntroHandlerFunc)
-	booksRouter.
-		SubPath("/{id}").
-		Get("Get book", books.Get).
-		Put("Replace book", books.Put).
-		Delete("Delete book", books.Delete)
+	router := handler.Path("/stuff")
+	router.Get("Get a list of stuff", model.GetAll).
+		Post("Add stuff", model.Post)
+	router.SubPath("/_doc").
+		Get("Read document", router.SelfIntroHandlerFunc)
+	router.SubPath("/{id}").
+		Get("Get stuff", model.Get).
+		Put("Replace stuff", model.Put).
+		Delete("Remove stuff", model.Delete)
 
 	type testcase struct {
 		Path   string
@@ -47,94 +42,38 @@ func TestRouter(t *testing.T) {
 	}
 	tests := []testcase{
 		{
-			"/books/_doc",
-			"GET",
-			nil,
-			`[
-  {
-    "path": "/books",
-    "methods": [
-      {
-        "method": "OPTIONS",
-        "description": "Get available methods"
-      },
-      {
-        "method": "GET",
-        "description": "Get books"
-      },
-      {
-        "method": "POST",
-        "description": "Add book"
-      }
-    ]
-  },
-  {
-    "path": "/books/_doc",
-    "methods": [
-      {
-        "method": "OPTIONS",
-        "description": "Get available methods"
-      },
-      {
-        "method": "GET",
-        "description": "Get document"
-      }
-    ]
-  },
-  {
-    "path": "/books/{id}",
-    "methods": [
-      {
-        "method": "OPTIONS",
-        "description": "Get available methods"
-      },
-      {
-        "method": "GET",
-        "description": "Get book"
-      },
-      {
-        "method": "PUT",
-        "description": "Replace book"
-      },
-      {
-        "method": "DELETE",
-        "description": "Delete book"
-      }
-    ]
-  }
-]`,
-		}, {
-			"/books",
+			"/stuff",
 			"GET",
 			nil,
 			"[]",
 		}, {
-			"/books",
+			"/stuff",
 			"POST",
 			book1,
-			"http://example.com/books/The%20Adventures%20of%20Tom%20Sawyer",
+			"http://example.com/stuff/1",
 		}, {
-			"/books",
+			"/stuff",
 			"GET",
 			nil,
 			`[
   {
-    "title": "The Adventures of Tom Sawyer",
-    "author": "Mark Twain"
+    "author": "Mark Twain",
+    "id": "1",
+    "title": "The Adventures of Tom Sawyer"
   }
 ]`,
 		}, {
-			"/books/The%20Adventures%20of%20Tom%20Sawyer",
+			"/stuff/1",
 			"GET",
 			nil,
 			string(book1),
 		}, {
-			"/books/The%20Adventures%20of%20Tom%20Sawyer",
+			"/stuff/1",
 			"PUT",
 			book2,
 			string(book2),
 		}, {
-			"/books/The%20Adventures%20of%20Tom%20Sawyer",
+			"/stuff/1",
 			"DELETE",
 			nil,
 			"",
@@ -162,7 +101,7 @@ func TestRouter(t *testing.T) {
 }
 
 func causeError(w http.ResponseWriter, req *http.Request) {
-	err := Error{
+	err := HTTPError{
 		StatusCode: 400,
 		Message:    "Test error",
 	}

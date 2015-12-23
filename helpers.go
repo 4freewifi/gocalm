@@ -16,7 +16,7 @@ func ReadJSON(v interface{}, req *http.Request) {
 	}
 	err = json.Unmarshal(data, v)
 	if err != nil {
-		panic(Error{
+		panic(HTTPError{
 			StatusCode: http.StatusBadRequest,
 			Message:    err.Error(),
 		})
@@ -48,31 +48,33 @@ func Write201(host, id string, w http.ResponseWriter, req *http.Request) {
 
 // Error fits interface `error` and can be handled by ErrorHandler to
 // generate status code and error message.
-type Error struct {
+type HTTPError struct {
 	StatusCode int    `json:"statusCode"`
 	Message    string `json:"message"`
 }
 
-func (t Error) Error() string {
+func (t HTTPError) Error() string {
 	return fmt.Sprintf("%d %s", t.StatusCode, t.Message)
 }
 
-func handleError(err error, w http.ResponseWriter, req *http.Request) {
+// Similar to http.Error, except Content-Type is application/json
+func Error(w http.ResponseWriter, error string, code int) {
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	WriteJSON(HTTPError{
+		StatusCode: code,
+		Message:    error,
+	}, w)
+}
+
+func handleError(err error, w http.ResponseWriter, req *http.Request) {
 	switch t := err.(type) {
-	case Error:
-		w.WriteHeader(t.StatusCode)
-		WriteJSON(t, w)
-	case *Error:
-		w.WriteHeader(t.StatusCode)
-		WriteJSON(t, w)
+	case HTTPError:
+		Error(w, t.Message, t.StatusCode)
+	case *HTTPError:
+		Error(w, t.Message, t.StatusCode)
 	default:
-		e := Error{
-			StatusCode: http.StatusInternalServerError,
-			Message:    err.Error(),
-		}
-		w.WriteHeader(e.StatusCode)
-		WriteJSON(e, w)
+		Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
