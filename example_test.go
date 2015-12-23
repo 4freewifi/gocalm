@@ -20,6 +20,7 @@ func (t *BooksModel) GetAll(w http.ResponseWriter, req *http.Request) {
 	for _, book := range t.Shelf {
 		books = append(books, book)
 	}
+	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(books, w)
 }
 
@@ -53,6 +54,7 @@ func (t *BooksModel) Get(w http.ResponseWriter, req *http.Request) {
 	if !ok {
 		goto NotFound
 	}
+	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(book, w)
 	return
 
@@ -83,6 +85,7 @@ func (t *BooksModel) Put(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	t.Shelf[book.Title] = book
+	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(book, w)
 	return
 

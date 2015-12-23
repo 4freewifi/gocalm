@@ -29,7 +29,6 @@ func WriteJSON(v interface{}, w http.ResponseWriter) {
 	if err != nil {
 		panic(err)
 	}
-	w.Header().Set("Content-Type", "application/json")
 	w.Write(b)
 }
 
@@ -59,6 +58,7 @@ func (t Error) Error() string {
 }
 
 func handleError(err error, w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	switch t := err.(type) {
 	case Error:
 		w.WriteHeader(t.StatusCode)
