@@ -3,9 +3,11 @@ package gocalm
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"reflect"
 )
 
 // ReadJSON unmarshals request body in JSON into v.
@@ -46,7 +48,7 @@ func Write201(host, id string, w http.ResponseWriter, req *http.Request) {
 	w.Write(nil)
 }
 
-// Error fits interface `error` and can be handled by ErrorHandler to
+// HTTPError fits interface `error` and can be handled by ErrorHandler to
 // generate status code and error message.
 type HTTPError struct {
 	StatusCode int    `json:"statusCode"`
@@ -108,4 +110,71 @@ func ResContentTypeHandler(h http.Handler, contentTypes ...string,
 		h.ServeHTTP(w, req)
 	}
 	return http.HandlerFunc(wrapped)
+}
+
+// Mount tries to find http.HandlerFunc with specific names such as
+// "GetAll", "Post", "Get", "Put", "Patch", "Delete" through the
+// methods of a type, and mount them to a default set of paths. An
+// optional map[string]string could be provided as method descriptions
+// instead of the default ones. Router.SelfIntroHandlerFunc is mounted
+// at "/_doc"
+func Mount(r *Router, v reflect.Value, d map[string]string) {
+	glog.V(1).Infof("Model: %s", v.Type().Name())
+	r.SubPath("/_doc").Get("Document", r.SelfIntroHandlerFunc)
+	idPath := r.SubPath("/{id}")
+	getDesc := func(key, def string) string {
+		if d == nil {
+			return def
+		}
+		desc, ok := d[key]
+		if !ok {
+			return def
+		}
+		return desc
+	}
+	numMethod := v.NumMethod()
+	for i := 0; i < numMethod; i++ {
+		method := v.Type().Method(i)
+		glog.V(1).Infof("%d %s", i, method.Name)
+		f, ok := v.Method(i).Interface().(func(http.ResponseWriter, *http.Request))
+		if !ok {
+			glog.V(1).Infof("%s is not a http.HandlerFunc, skip.",
+				method.Name)
+			continue
+		}
+		switch method.Name {
+		case "GetAll":
+			desc := getDesc("GetAll", "Get a list of objects")
+			glog.V(1).Infof("Mount %s to %s with description %s",
+				method.Name, "GET /", desc)
+			r.Get(desc, f)
+		case "Post":
+			desc := getDesc("Post", "Add an object")
+			glog.V(1).Infof("Mount %s to %s with description %s",
+				method.Name, "POST /", desc)
+			r.Post(desc, f)
+		case "Get":
+			desc := getDesc("Get", "Get an object")
+			glog.V(1).Infof("Mount %s to %s with description %s",
+				method.Name, "GET /{id}", desc)
+			idPath.Get(desc, f)
+		case "Put":
+			desc := getDesc("Put", "Replace an object")
+			glog.V(1).Infof("Mount %s to %s with description %s",
+				method.Name, "PUT /{id}", desc)
+			idPath.Put(desc, f)
+		case "Patch":
+			desc := getDesc("Patch", "Patch an object")
+			glog.V(1).Infof("Mount %s to %s with description %s",
+				method.Name, "PATCH /{id}", desc)
+			idPath.Patch(desc, f)
+		case "Delete":
+			desc := getDesc("Delete", "Delete an object")
+			glog.V(1).Infof("Mount %s to %s with description %s",
+				method.Name, "DELETE /{id}", desc)
+			idPath.Delete(desc, f)
+		default:
+			glog.V(1).Infof("Skip %s", method.Name)
+		}
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/gorilla/handlers"
 	"log"
 	"net/http"
+	"reflect"
 )
 
 func Example() {
@@ -12,14 +13,7 @@ func Example() {
 	model := MockModel(make(map[string]JSONObject))
 	handler := NewHandler()
 	router := handler.Path("/stuff")
-	router.Get("Get a list of stuff", model.GetAll).
-		Post("Add stuff", model.Post)
-	router.SubPath("/_doc").
-		Get("Read document", router.SelfIntroHandlerFunc)
-	router.SubPath("/{id}").
-		Get("Get stuff", model.Get).
-		Put("Replace stuff", model.Put).
-		Delete("Remove stuff", model.Delete)
+	Mount(router, reflect.ValueOf(model), nil)
 	wrapped := ResContentTypeHandler(handler, JSON_TYPE)
 	wrapped = ErrorHandler(wrapped)
 	wrapped = handlers.CompressHandler(wrapped)

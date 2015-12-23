@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -26,14 +27,7 @@ func TestRouter(t *testing.T) {
 	model := MockModel(make(map[string]JSONObject))
 	handler := NewHandler()
 	router := handler.Path("/stuff")
-	router.Get("Get a list of stuff", model.GetAll).
-		Post("Add stuff", model.Post)
-	router.SubPath("/_doc").
-		Get("Read document", router.SelfIntroHandlerFunc)
-	router.SubPath("/{id}").
-		Get("Get stuff", model.Get).
-		Put("Replace stuff", model.Put).
-		Delete("Remove stuff", model.Delete)
+	Mount(router, reflect.ValueOf(model), nil)
 	wrapped := ResContentTypeHandler(handler, JSON_TYPE)
 	wrapped = handlers.ContentTypeHandler(wrapped, JSON_TYPE)
 
@@ -89,11 +83,15 @@ func TestRouter(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Logf("Testing %s %s", test.Method, test.Path)
 		req.Header.Set(CONTENT_TYPE, JSON_TYPE)
 		w := httptest.NewRecorder()
 		wrapped.ServeHTTP(w, req)
-		if w.HeaderMap.Get(CONTENT_TYPE) != JSON_TYPE {
-			t.Fatalf("Incorrect Response Content-Type")
+		t.Logf("Response: %d %s", w.Code, w.Body.String())
+		typ := w.HeaderMap.Get(CONTENT_TYPE)
+		if typ != JSON_TYPE {
+			t.Fatalf("Expect Content-Type: %s, Got: %s", JSON_TYPE,
+				typ)
 		}
 		var output string
 		if test.Method == "POST" {
