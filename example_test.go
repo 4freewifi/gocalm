@@ -20,8 +20,9 @@ func Example() {
 		Get("Get stuff", model.Get).
 		Put("Replace stuff", model.Put).
 		Delete("Remove stuff", model.Delete)
-	wrapped := ErrorHandler(handler)
+	wrapped := ResContentTypeHandler(handler, JSON_TYPE)
+	wrapped = ErrorHandler(wrapped)
 	wrapped = handlers.CompressHandler(wrapped)
-	wrapped = handlers.ContentTypeHandler(wrapped, "application/json")
+	wrapped = handlers.ContentTypeHandler(wrapped, JSON_TYPE)
 	log.Fatal(http.ListenAndServe(":8080", wrapped))
 }

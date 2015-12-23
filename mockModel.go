@@ -20,7 +20,6 @@ func (t MockModel) GetAll(w http.ResponseWriter, req *http.Request) {
 		obj[ID] = id
 		list = append(list, obj)
 	}
-	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(list, w)
 }
 
@@ -68,7 +67,6 @@ func (t MockModel) Get(w http.ResponseWriter, req *http.Request) {
 			Message:    "Not found",
 		})
 	}
-	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(obj, w)
 	return
 }
@@ -86,7 +84,6 @@ func (t MockModel) Put(w http.ResponseWriter, req *http.Request) {
 	ReadJSON(&obj, req)
 	obj[ID] = id
 	t[id] = obj
-	w.Header().Set("Content-Type", "application/json")
 	WriteJSON(obj, w)
 }
 

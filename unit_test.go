@@ -2,6 +2,7 @@ package gocalm
 
 import (
 	"bytes"
+	"github.com/gorilla/handlers"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -33,6 +34,8 @@ func TestRouter(t *testing.T) {
 		Get("Get stuff", model.Get).
 		Put("Replace stuff", model.Put).
 		Delete("Remove stuff", model.Delete)
+	wrapped := ResContentTypeHandler(handler, JSON_TYPE)
+	wrapped = handlers.ContentTypeHandler(wrapped, JSON_TYPE)
 
 	type testcase struct {
 		Path   string
@@ -86,8 +89,12 @@ func TestRouter(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		req.Header.Set(CONTENT_TYPE, JSON_TYPE)
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
+		wrapped.ServeHTTP(w, req)
+		if w.HeaderMap.Get(CONTENT_TYPE) != JSON_TYPE {
+			t.Fatalf("Incorrect Response Content-Type")
+		}
 		var output string
 		if test.Method == "POST" {
 			output = w.HeaderMap.Get("Location")

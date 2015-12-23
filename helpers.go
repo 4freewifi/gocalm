@@ -57,9 +57,8 @@ func (t HTTPError) Error() string {
 	return fmt.Sprintf("%d %s", t.StatusCode, t.Message)
 }
 
-// Similar to http.Error, except Content-Type is application/json
+// Similar to http.Error, except content is JSON
 func Error(w http.ResponseWriter, error string, code int) {
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	WriteJSON(HTTPError{
 		StatusCode: code,
@@ -79,7 +78,7 @@ func handleError(err error, w http.ResponseWriter, req *http.Request) {
 }
 
 // ErrorHandler decorates http.Handler to catch and handle error.
-func ErrorHandler(handler http.Handler) http.Handler {
+func ErrorHandler(h http.Handler) http.Handler {
 	wrapped := func(w http.ResponseWriter, req *http.Request) {
 		defer func() {
 			r := recover()
@@ -93,7 +92,20 @@ func ErrorHandler(handler http.Handler) http.Handler {
 			}
 			panic(r)
 		}()
-		handler.ServeHTTP(w, req)
+		h.ServeHTTP(w, req)
+	}
+	return http.HandlerFunc(wrapped)
+}
+
+// Set Content-Type to contentTypes...
+func ResContentTypeHandler(h http.Handler, contentTypes ...string,
+) http.Handler {
+	wrapped := func(w http.ResponseWriter, req *http.Request) {
+		header := w.Header()
+		for _, t := range contentTypes {
+			header.Add(CONTENT_TYPE, t)
+		}
+		h.ServeHTTP(w, req)
 	}
 	return http.HandlerFunc(wrapped)
 }
