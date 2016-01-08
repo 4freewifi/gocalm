@@ -11,5 +11,9 @@ practices into the framework.
 
 3. Simple and clear syntax to make your code self-doucumented.
 
+4. Built-in OPTIONS method.
+
+Check `example_test.go` for an working example.
+
 */
 package gocalm

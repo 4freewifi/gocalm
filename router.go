@@ -2,7 +2,6 @@ package gocalm
 
 import (
 	"encoding/json"
-	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	"net/http"
 	"strings"
@@ -79,12 +78,7 @@ func (t *Router) options(w http.ResponseWriter, req *http.Request) {
 		keys = append(keys, key)
 	}
 	w.Header().Set("Allow", strings.Join(keys, ","))
-	w.WriteHeader(http.StatusOK)
-	_, err := w.Write(nil)
-	if err != nil {
-		glog.Error(err)
-		panic(err)
-	}
+	t.SelfIntroHandlerFunc(w, req)
 }
 
 // Get binds f to the GET method of the Router's path with description.

@@ -121,11 +121,9 @@ func ResContentTypeHandler(h http.Handler, contentTypes ...string,
 // "GetAll", "Post", "Get", "Put", "Patch", "Delete" through the
 // methods of a type, and mount them to a default set of paths. An
 // optional map[string]string could be provided as method descriptions
-// instead of the default ones. Router.SelfIntroHandlerFunc is mounted
-// at "/_doc"
+// instead of the default ones.
 func Mount(r *Router, v reflect.Value, d map[string]string) {
 	glog.V(1).Infof("Model: %s", v.Type().Name())
-	r.SubPath("/_doc").Get("Document", r.SelfIntroHandlerFunc)
 	idPath := r.SubPath("/{id}")
 	getDesc := func(key, def string) string {
 		if d == nil {
