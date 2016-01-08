@@ -6,7 +6,6 @@ import (
 	"github.com/golang/glog"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"reflect"
 )
 
@@ -34,18 +33,21 @@ func WriteJSON(v interface{}, w http.ResponseWriter) {
 	w.Write(b)
 }
 
-// Write201 is a helper functon for POST to send back the absolute URI
-// of the new resource. `host` must be something like
-// http://example.com , with no trailing slash.
-func Write201(host, id string, w http.ResponseWriter, req *http.Request) {
-	s := fmt.Sprintf("%s%s/%s", host, req.URL.String(), id)
-	absoluteURI, err := url.Parse(s)
+// Write201 is a helper functon for POST to send back the absolute URL
+// of the new resource.
+func Write201(id string, w http.ResponseWriter, req *http.Request) {
+	proto := req.Header.Get("X-Forwarded-Proto")
+	if proto == "" {
+		proto = "http"
+	}
+	u := fmt.Sprintf("%s://%s%s/%s", proto, req.Host, req.URL.String(), id)
+	glog.Infof("Post Location: %s", u)
+	w.Header().Set("Location", u)
+	w.WriteHeader(http.StatusCreated)
+	_, err := w.Write(nil)
 	if err != nil {
 		panic(err)
 	}
-	w.Header().Set("Location", absoluteURI.String())
-	w.WriteHeader(http.StatusCreated)
-	w.Write(nil)
 }
 
 // HTTPError fits interface `error` and can be handled by ErrorHandler to

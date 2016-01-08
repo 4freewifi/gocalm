@@ -48,7 +48,7 @@ func (t MockModel) Post(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	t[id] = obj
-	Write201("http://example.com", id, w, req)
+	Write201(id, w, req)
 }
 
 func getID(req *http.Request) (id string) {

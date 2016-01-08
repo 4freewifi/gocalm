@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+const (
+	HOST = "foo.bar"
+)
+
 var book1 = []byte(`{
   "author": "Mark Twain",
   "id": "1",
@@ -47,7 +51,7 @@ func TestRouter(t *testing.T) {
 			"/stuff",
 			"POST",
 			book1,
-			"http://example.com/stuff/1",
+			"http://" + HOST + "/stuff/1",
 		}, {
 			"/stuff",
 			"GET",
@@ -83,6 +87,7 @@ func TestRouter(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		req.Host = HOST
 		t.Logf("Testing %s %s", test.Method, test.Path)
 		req.Header.Set(CONTENT_TYPE, JSON_TYPE)
 		w := httptest.NewRecorder()
