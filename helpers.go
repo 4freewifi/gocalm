@@ -30,7 +30,10 @@ func WriteJSON(v interface{}, w http.ResponseWriter) {
 	if err != nil {
 		panic(err)
 	}
-	w.Write(b)
+	_, err = w.Write(b)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Write201 is a helper functon for POST to send back the absolute URL

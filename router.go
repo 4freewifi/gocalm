@@ -163,5 +163,8 @@ func (t *Router) SelfIntroHandlerFunc(
 	if err != nil {
 		panic(err)
 	}
-	w.Write(b)
+	_, err = w.Write(b)
+	if err != nil {
+		panic(err)
+	}
 }

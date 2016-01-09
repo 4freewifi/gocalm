@@ -98,5 +98,8 @@ func (t MockModel) Delete(w http.ResponseWriter, req *http.Request) {
 	}
 	delete(t, id)
 	w.WriteHeader(http.StatusNoContent)
-	w.Write(nil)
+	_, err := w.Write(nil)
+	if err != nil {
+		panic(err)
+	}
 }
