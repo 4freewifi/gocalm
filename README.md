@@ -1,5 +1,6 @@
-Please read `overview.go` for general introduction and
-`example_test.go` for an example.
+[![godoc](https://godoc.org/github.com/4freewifi/gocalm?status.svg)](https://godoc.org/github.com/4freewifi/gocalm)
+
+For document, check https://godoc.org/github.com/4freewifi/gocalm .
 
 # License
 
