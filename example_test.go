@@ -2,6 +2,7 @@ package gocalm
 
 import (
 	"github.com/gorilla/handlers"
+	"github.com/johncylee/goutil"
 	"log"
 	"net/http"
 	"reflect"
@@ -14,7 +15,8 @@ func Example() {
 	handler := NewHandler()
 	router := handler.Path("/stuff")
 	Mount(router, reflect.ValueOf(model), nil)
-	wrapped := ResContentTypeHandler(handler, JSON_TYPE)
+	wrapped := goutil.HeadHandler(handler)
+	wrapped = ResContentTypeHandler(wrapped, JSON_TYPE)
 	wrapped = ErrorHandler(wrapped)
 	wrapped = handlers.CompressHandler(wrapped)
 	wrapped = handlers.ContentTypeHandler(wrapped, JSON_TYPE)
