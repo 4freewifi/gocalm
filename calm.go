@@ -371,7 +371,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 	}
 	key := kvpairs[h.Key]
 	switch {
-	case r.Method == "GET" && key != "":
+	case r.Method == http.MethodGet && key != "":
 		cachekey := h.makeKey(r)
 		b, err := h.cached(cachekey, kvpairs)
 		if err != nil {
@@ -384,7 +384,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if err != nil {
 			panic(err)
 		}
-	case r.Method == "GET":
+	case r.Method == http.MethodGet:
 		cachekey := h.makeKey(r)
 		b, err := h.getAllJSON(cachekey, kvpairs)
 		if err != nil {
@@ -397,7 +397,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 		if err != nil {
 			panic(err)
 		}
-	case r.Method == "PUT" && key != "":
+	case r.Method == http.MethodPut && key != "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
@@ -408,10 +408,10 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			panic(err)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
-	case r.Method == "PUT":
+	case r.Method == http.MethodPut:
 		// TODO: do not implement this until we have reflect.SliceOf
 		panic(ErrNotImplemented)
-	case r.Method == "PATCH" && key != "":
+	case r.Method == http.MethodPatch && key != "":
 		defer r.Body.Close()
 		b, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -443,7 +443,7 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			panic(err)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
-	case r.Method == "POST" && key == "":
+	case r.Method == http.MethodPost && key == "":
 		v := reflect.New(h.DataType).Interface()
 		_, err := readJSON(v, r)
 		if err != nil {
@@ -454,13 +454,13 @@ func (h *RESTHandler) ServeHTTP(w http.ResponseWriter, r *http.Request,
 			panic(err)
 		}
 		fmt.Fprintf(w, `{"id": "%s"}`, id)
-	case r.Method == "DELETE" && key != "":
+	case r.Method == http.MethodDelete && key != "":
 		err := h.Model.Delete(kvpairs)
 		if err != nil {
 			panic(err)
 		}
 		sendJSONMsg(w, r, http.StatusOK, SUCCESS)
-	case r.Method == "DELETE" && key == "":
+	case r.Method == http.MethodDelete && key == "":
 		panic(ErrNotImplemented)
 	default:
 		panic(ErrNotImplemented)

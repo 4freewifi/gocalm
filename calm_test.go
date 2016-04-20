@@ -174,7 +174,7 @@ func VerifyGet(t *testing.T, s *httptest.Server, key string) {
 		t.Fatal(err)
 	}
 	client := http.Client{}
-	req, err := http.NewRequest("GET", s.URL+"/"+key, nil)
+	req, err := http.NewRequest(http.MethodGet, s.URL+"/"+key, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestRestful(t *testing.T) {
 	}
 	// PUT /0
 	client := http.Client{}
-	req, err := http.NewRequest("PUT", s.URL+"/0",
+	req, err := http.NewRequest(http.MethodPut, s.URL+"/0",
 		strings.NewReader(`{"value":"John"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -251,7 +251,7 @@ func TestRestful(t *testing.T) {
 	}
 	Expect(t, res, 200)
 	// Expect to get cached value
-	req, err = http.NewRequest("GET", s.URL+"/0", nil)
+	req, err = http.NewRequest(http.MethodGet, s.URL+"/0", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestRestful(t *testing.T) {
 	h.Expiration = 0
 	// POST
 	j, _ = json.Marshal(KeyValue{3, "unknown"})
-	req, err = http.NewRequest("POST", s.URL, bytes.NewReader(j))
+	req, err = http.NewRequest(http.MethodPost, s.URL, bytes.NewReader(j))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestRestful(t *testing.T) {
 	// GET /3 to verify
 	VerifyGet(t, s, "3")
 	// PATCH
-	req, err = http.NewRequest("PATCH", s.URL+"/3", strings.NewReader(
+	req, err = http.NewRequest(http.MethodPatch, s.URL+"/3", strings.NewReader(
 		`[
   {
     "op": "replace",
@@ -302,7 +302,7 @@ func TestRestful(t *testing.T) {
 	// GET /3 to verify
 	VerifyGet(t, s, "3")
 	// DELETE /1
-	req, err = http.NewRequest("DELETE", s.URL+"/1", nil)
+	req, err = http.NewRequest(http.MethodDelete, s.URL+"/1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestRestful(t *testing.T) {
 	}
 	// DELETE /{0, 2, 3}
 	for _, id := range []string{"0", "2", "3"} {
-		req, err = http.NewRequest("DELETE", s.URL+"/"+id, nil)
+		req, err = http.NewRequest(http.MethodDelete, s.URL+"/"+id, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
